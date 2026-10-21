@@ -17,7 +17,7 @@ export type RunnerPing = z.infer<typeof runnerPingSchema>;
 
 export const runCreateSchema = z.object({
   instruction: z.string().min(1).max(1000),
-  baseUrl: z.string().url().optional(),
+  baseUrl: z.url().optional(),
 });
 
 export type RunCreateInput = z.infer<typeof runCreateSchema>;

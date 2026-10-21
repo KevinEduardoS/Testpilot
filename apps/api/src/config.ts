@@ -21,8 +21,8 @@ const readRootEnvFile = (): Record<string, string | undefined> => {
 
 const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
-  RUNNER_URL: z.string().url().default('http://localhost:3002'),
-  WEB_ORIGIN: z.string().url().default('http://localhost:5173'),
+  RUNNER_URL: z.url().default('http://localhost:3002'),
+  WEB_ORIGIN: z.url().default('http://localhost:5173'),
   INTERNAL_API_KEY: z.string().min(32, 'debe tener al menos 32 caracteres'),
 });
 

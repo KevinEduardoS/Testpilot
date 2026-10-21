@@ -14,6 +14,16 @@ La base actual incluye:
 - npm 10+
 - Docker + Docker Compose (opcional para levantar la pila completa)
 
+## Configuración
+```bash
+cp .env.example .env
+```
+
+Definir `INTERNAL_API_KEY` en `.env` (mínimo 32 caracteres). La API y el runner no arrancan sin ella:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
 ## Levantar sin Docker
 ```bash
 npm install
@@ -22,17 +32,18 @@ npm run dev
 
 ## Levantar con Docker
 ```bash
-cp .env.example .env
 docker compose up --build
 ```
+
+Los contenedores solo montan las carpetas `src`. Tras cambiar dependencias o archivos de configuración, reconstruir con `docker compose up --build`.
 
 ## Servicios
 - Web: http://localhost:5173
 - API: http://localhost:3001
-- Runner: http://localhost:3002
+- Runner: http://localhost:3002 sin Docker; con Docker solo es accesible desde la API
 
 ## Variables de entorno
-Copiar `.env.example` a `.env` y ajustar los valores reales del entorno local.
+Todos los servicios leen el `.env` de la raíz, pero cada uno toma solo las variables que necesita. La web solo recibe las que empiezan por `VITE_`.
 
 ## Seguridad no negociable
 - Nunca versionar archivos `.env` ni secretos reales.

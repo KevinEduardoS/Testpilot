@@ -1,9 +1,8 @@
 import Fastify from 'fastify';
 import { healthStatusSchema } from '@testpilot/shared';
+import { env } from './config.js';
 
 const app = Fastify({ logger: true });
-const runnerUrl = process.env.RUNNER_URL ?? 'http://localhost:3002';
-const internalApiKey = process.env.INTERNAL_API_KEY ?? 'development-secret';
 
 app.get('/health', async () => {
   const payload = {
@@ -24,9 +23,9 @@ app.get('/api/health', async () => {
 });
 
 app.get('/api/ping', async () => {
-  const response = await fetch(`${runnerUrl}/health`, {
+  const response = await fetch(`${env.RUNNER_URL}/health`, {
     headers: {
-      'x-internal-api-key': internalApiKey,
+      'x-internal-api-key': env.INTERNAL_API_KEY,
     },
   });
 
@@ -47,13 +46,11 @@ app.get('/api/ping', async () => {
 
 const start = async () => {
   try {
-    const port = Number(process.env.PORT ?? 3001);
-    await app.listen({ port, host: '0.0.0.0' });
-    app.log.info(`API listening on http://0.0.0.0:${port}`);
+    await app.listen({ port: env.API_PORT, host: '0.0.0.0' });
   } catch (error) {
     app.log.error(error);
     process.exit(1);
   }
 };
 
-start();
+void start();

@@ -1,21 +1,30 @@
+import { timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
 import { healthStatusSchema } from '@testpilot/shared';
+import { env } from './config.js';
 
 const app = Fastify({ logger: true });
-const internalApiKey = process.env.INTERNAL_API_KEY ?? 'development-secret';
+const expectedKey = Buffer.from(env.INTERNAL_API_KEY);
 
-app.addHook('preHandler', async (request, reply) => {
-  if (request.routeOptions.url === '/health' || request.url === '/health') {
+const isValidInternalKey = (providedKey: string | string[] | undefined): boolean => {
+  if (typeof providedKey !== 'string') {
+    return false;
+  }
+
+  const provided = Buffer.from(providedKey);
+  return provided.length === expectedKey.length && timingSafeEqual(provided, expectedKey);
+};
+
+app.addHook('onRequest', async (request, reply) => {
+  if (request.routeOptions.url === '/health') {
     return;
   }
 
-  const providedKey = request.headers['x-internal-api-key'];
-  if (providedKey !== internalApiKey) {
-    reply.code(401).send({
+  if (!isValidInternalKey(request.headers['x-internal-api-key'])) {
+    return reply.code(401).send({
       error: 'Unauthorized',
       message: 'Missing or invalid INTERNAL_API_KEY',
     });
-    return;
   }
 });
 
@@ -65,13 +74,11 @@ app.post('/execute', async (_request, reply) => {
 
 const start = async () => {
   try {
-    const port = Number(process.env.PORT ?? 3002);
-    await app.listen({ port, host: '0.0.0.0' });
-    app.log.info(`Runner listening on http://0.0.0.0:${port}`);
+    await app.listen({ port: env.RUNNER_PORT, host: '0.0.0.0' });
   } catch (error) {
     app.log.error(error);
     process.exit(1);
   }
 };
 
-start();
+void start();

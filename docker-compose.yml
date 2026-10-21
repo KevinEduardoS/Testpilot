@@ -1,4 +1,6 @@
-version: '3.9'
+# Entorno de desarrollo local. Las variables se interpolan desde el .env de la raíz,
+# pero cada servicio recibe solo las que necesita y el .env no se monta en los contenedores.
+# Solo se montan las carpetas src: node_modules viene de la imagen (Linux), no del host.
 
 services:
   postgres:
@@ -9,7 +11,7 @@ services:
       POSTGRES_USER: testpilot
       POSTGRES_PASSWORD: testpilot
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,27 +29,26 @@ services:
       postgres:
         condition: service_healthy
       runner:
-        condition: service_started
+        condition: service_healthy
     environment:
       NODE_ENV: development
-      PORT: 3001
-      DATABASE_URL: postgresql://testpilot:testpilot@postgres:5432/testpilot
-      INTERNAL_API_KEY: change-me
-      ANTHROPIC_API_KEY: replace-me
-      ANTHROPIC_MODEL: claude-sonnet-4-20250514
+      API_PORT: 3001
       RUNNER_URL: http://runner:3002
+      WEB_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://testpilot:testpilot@postgres:5432/testpilot
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Define INTERNAL_API_KEY en .env}
     ports:
       - '3001:3001'
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "fetch(\'http://127.0.0.1:3001/health\').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"']
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
     volumes:
-      - .:/workspace
-    working_dir: /workspace
-    command: sh -lc 'npm install && npm --workspace apps/api run dev -- --host 0.0.0.0 --port 3001'
+      - ./apps/api/src:/workspace/apps/api/src
+      - ./packages/shared/src:/workspace/packages/shared/src
 
+  # Sin puertos publicados: solo la API puede llegar al runner, por la red interna.
   runner:
     build:
       context: .
@@ -55,19 +56,22 @@ services:
     container_name: testpilot-runner
     environment:
       NODE_ENV: development
-      PORT: 3002
-      INTERNAL_API_KEY: change-me
-    ports:
-      - '3002:3002'
+      RUNNER_PORT: 3002
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Define INTERNAL_API_KEY en .env}
+    expose:
+      - '3002'
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "fetch(\'http://127.0.0.1:3002/health\').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"']
+      test:
+        [
+          'CMD-SHELL',
+          "node -e \"fetch('http://127.0.0.1:3002/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\"",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
     volumes:
-      - .:/workspace
-    working_dir: /workspace
-    command: sh -lc 'npm install && npm --workspace apps/runner run dev -- --host 0.0.0.0 --port 3002'
+      - ./apps/runner/src:/workspace/apps/runner/src
+      - ./packages/shared/src:/workspace/packages/shared/src
 
   web:
     build:
@@ -77,17 +81,14 @@ services:
     depends_on:
       api:
         condition: service_started
-      runner:
-        condition: service_started
     environment:
       NODE_ENV: development
-      VITE_API_URL: http://localhost:3001
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
     ports:
       - '5173:5173'
     volumes:
-      - .:/workspace
-    working_dir: /workspace
-    command: sh -lc 'npm install && npm --workspace apps/web run dev -- --host 0.0.0.0 --port 5173'
+      - ./apps/web/src:/workspace/apps/web/src
+      - ./packages/shared/src:/workspace/packages/shared/src
 
 volumes:
   postgres_data:

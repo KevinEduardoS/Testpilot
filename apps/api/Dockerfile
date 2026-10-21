@@ -1,14 +1,13 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 WORKDIR /workspace
-COPY package*.json ./
-COPY apps ./apps
-COPY packages ./packages
-RUN npm install --include=dev
+RUN chown node:node /workspace
+USER node
 
-FROM node:20-alpine AS api
-WORKDIR /workspace
-COPY --from=builder /workspace /workspace
+COPY --chown=node:node package.json package-lock.json tsconfig.base.json ./
+COPY --chown=node:node apps ./apps
+COPY --chown=node:node packages ./packages
+RUN npm ci
+
 WORKDIR /workspace/apps/api
 EXPOSE 3001
-USER node
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3001"]
+CMD ["npm", "run", "dev"]

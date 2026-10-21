@@ -11,7 +11,6 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@fastify/cors": "^9.0.0",
     "@playwright/test": "1.49.1",
     "@testpilot/shared": "*",
     "fastify": "^4.28.0",

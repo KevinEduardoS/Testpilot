@@ -1,8 +1,13 @@
+import cors from '@fastify/cors';
 import Fastify from 'fastify';
-import { healthStatusSchema } from '@testpilot/shared';
+import { healthStatusSchema, runnerPingSchema, type RunnerPing } from '@testpilot/shared';
 import { env } from './config.js';
 
+const RUNNER_PING_TIMEOUT_MS = 3000;
+
 const app = Fastify({ logger: true });
+
+await app.register(cors, { origin: env.WEB_ORIGIN });
 
 app.get('/health', async () => {
   const payload = {
@@ -14,34 +19,27 @@ app.get('/health', async () => {
   return healthStatusSchema.parse(payload);
 });
 
-app.get('/api/health', async () => {
-  return {
-    status: 'ok',
-    service: 'api',
-    timestamp: new Date().toISOString(),
-  };
-});
+app.get('/api/ping', async (request, reply) => {
+  let result: RunnerPing;
 
-app.get('/api/ping', async () => {
-  const response = await fetch(`${env.RUNNER_URL}/health`, {
-    headers: {
-      'x-internal-api-key': env.INTERNAL_API_KEY,
-    },
-  });
+  try {
+    const response = await fetch(`${env.RUNNER_URL}/health`, {
+      headers: {
+        'x-internal-api-key': env.INTERNAL_API_KEY,
+      },
+      signal: AbortSignal.timeout(RUNNER_PING_TIMEOUT_MS),
+    });
 
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status,
-      message: 'runner unavailable',
-    };
+    result = response.ok
+      ? { ok: true, message: 'runner reachable' }
+      : { ok: false, message: `runner responded with status ${response.status}` };
+  } catch (error) {
+    request.log.warn({ err: error }, 'runner unreachable');
+    result = { ok: false, message: 'runner unreachable' };
   }
 
-  return {
-    ok: true,
-    status: response.status,
-    message: 'runner reachable',
-  };
+  reply.code(result.ok ? 200 : 503);
+  return runnerPingSchema.parse(result);
 });
 
 const start = async () => {

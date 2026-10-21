@@ -1,47 +1,31 @@
 import { useEffect, useState } from 'react';
-import { healthStatusSchema } from '@testpilot/shared';
+import { isApiUp, isRunnerUp } from './api';
 
-type HealthState = {
-  status: 'ok' | 'error';
-  label: string;
+type ServiceStatus = 'checking' | 'up' | 'down';
+
+const statusLabels: Record<ServiceStatus, string> = {
+  checking: 'Verificando',
+  up: 'Conectado',
+  down: 'Sin conexión',
 };
 
-export default function App() {
-  const sharedExample = healthStatusSchema.parse({
-    status: 'ok',
-    service: 'web',
-    timestamp: new Date().toISOString(),
-  });
+const toStatus = (up: boolean): ServiceStatus => (up ? 'up' : 'down');
 
-  const [health, setHealth] = useState<HealthState>({ status: 'error', label: 'Verificando' });
+export default function App() {
+  const [apiStatus, setApiStatus] = useState<ServiceStatus>('checking');
+  const [runnerStatus, setRunnerStatus] = useState<ServiceStatus>('checking');
 
   useEffect(() => {
-    const check = async () => {
-      try {
-        const response = await fetch('http://localhost:3001/api/health');
-        if (response.ok) {
-          setHealth({ status: 'ok', label: 'API conectada' });
-          return;
-        }
-      } catch {
-        // handled below
-      }
-
-      try {
-        const response = await fetch('http://localhost:3002/health');
-        if (response.ok) {
-          setHealth({ status: 'ok', label: 'Runner conectado' });
-          return;
-        }
-      } catch {
-        // handled below
-      }
-
-      setHealth({ status: 'error', label: 'Sin conexión' });
-    };
-
-    void check();
+    void isApiUp().then((up) => setApiStatus(toStatus(up)));
+    void isRunnerUp().then((up) => setRunnerStatus(toStatus(up)));
   }, []);
+
+  const overallStatus: ServiceStatus =
+    apiStatus === 'checking' || runnerStatus === 'checking'
+      ? 'checking'
+      : apiStatus === 'up' && runnerStatus === 'up'
+        ? 'up'
+        : 'down';
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100">
@@ -54,23 +38,23 @@ export default function App() {
             </div>
             <span
               className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                health.status === 'ok'
+                overallStatus === 'up'
                   ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40'
                   : 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/40'
               }`}
             >
-              {health.label}
+              {statusLabels[overallStatus]}
             </span>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-              <p className="text-sm text-slate-400">Estado</p>
-              <p className="mt-2 text-xl font-semibold">{sharedExample.service}</p>
+              <p className="text-sm text-slate-400">API</p>
+              <p className="mt-2 text-xl font-semibold">{statusLabels[apiStatus]}</p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-              <p className="text-sm text-slate-400">Monorepo</p>
-              <p className="mt-2 text-xl font-semibold">3 servicios</p>
+              <p className="text-sm text-slate-400">Runner</p>
+              <p className="mt-2 text-xl font-semibold">{statusLabels[runnerStatus]}</p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
               <p className="text-sm text-slate-400">Infra</p>

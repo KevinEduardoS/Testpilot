@@ -8,6 +8,13 @@ export const healthStatusSchema = z.object({
 
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
 
+export const runnerPingSchema = z.object({
+  ok: z.boolean(),
+  message: z.string(),
+});
+
+export type RunnerPing = z.infer<typeof runnerPingSchema>;
+
 export const runCreateSchema = z.object({
   instruction: z.string().min(1).max(1000),
   baseUrl: z.string().url().optional(),

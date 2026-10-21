@@ -1,25 +1,30 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseEnv } from 'node:util';
 import { z } from 'zod';
 
-// En local se lee el .env de la raíz; en Docker las variables llegan por entorno
-// y tienen prioridad sobre el archivo.
 const rootEnvPath = fileURLToPath(new URL('../../../.env', import.meta.url));
 
-try {
-  process.loadEnvFile(rootEnvPath);
-} catch (error) {
-  const isMissingFile = error instanceof Error && 'code' in error && error.code === 'ENOENT';
-  if (!isMissingFile) {
+// En local se lee el .env de la raíz; en Docker no existe y las variables llegan por entorno.
+// No se vuelca en process.env: el schema descarta todo lo que este servicio no necesita.
+const readRootEnvFile = (): Record<string, string | undefined> => {
+  try {
+    return parseEnv(readFileSync(rootEnvPath, 'utf8'));
+  } catch (error) {
+    const isMissingFile = error instanceof Error && 'code' in error && error.code === 'ENOENT';
+    if (isMissingFile) {
+      return {};
+    }
     throw error;
   }
-}
+};
 
 const envSchema = z.object({
   RUNNER_PORT: z.coerce.number().int().positive().default(3002),
   INTERNAL_API_KEY: z.string().min(32, 'debe tener al menos 32 caracteres'),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const parsed = envSchema.safeParse({ ...readRootEnvFile(), ...process.env });
 
 if (!parsed.success) {
   const issues = parsed.error.issues

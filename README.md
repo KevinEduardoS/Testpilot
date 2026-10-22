@@ -5,7 +5,8 @@ TestPilot genera, ejecuta y diagnostica pruebas Playwright a partir de instrucci
 ## Qué hace hoy
 - **Genera** un script Playwright + TypeScript a partir de una instrucción, usando Claude con salida estructurada.
 - **Valida** cada script con una política de seguridad que analiza su AST (sin `eval`, `require`, `process`, `page.evaluate`, reflexión, red fuera del navegador, etc.).
-- **Ejecuta** el script en Chromium dentro del runner y devuelve el estado, la duración de cada paso, el error del paso fallido y una captura final.
+- **Refina** la prueba en una conversación: cada cambio pedido genera una versión nueva del script a partir de la versión seleccionada.
+- **Ejecuta** el script en Chromium dentro del runner y muestra en vivo cada paso, su duración, el error del paso fallido y una captura final.
 
 ```
 Navegador ──► Web (React) ──► API (Fastify + Claude) ──► Runner (Playwright)
@@ -27,6 +28,9 @@ Definir en `.env`:
   ```bash
   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   ```
+
+### Modo demo (sin clave de IA)
+Con `AI_PROVIDER=demo` la API no necesita `ANTHROPIC_API_KEY`: los ejemplos de la web devuelven scripts predefinidos y la ejecución en el navegador sigue siendo real. La interfaz lo indica con la etiqueta "Modo demo". Para usar Claude, `AI_PROVIDER=anthropic` y definir `ANTHROPIC_API_KEY`.
 
 ## Levantar sin Docker
 ```bash
@@ -50,8 +54,9 @@ La imagen del runner ya incluye los navegadores. Los contenedores solo montan la
 ## API
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/api/tests/generate` | `{ instruction, baseUrl? }` → prueba generada, pregunta de aclaración o rechazo |
-| `POST` | `/api/tests/execute` | `{ script }` → resultado de la ejecución |
+| `POST` | `/api/tests/generate` | `{ instruction, baseUrl?, context? }` → prueba generada, pregunta de aclaración o rechazo. `context` lleva el script vigente y las instrucciones anteriores para refinar |
+| `POST` | `/api/tests/execute` | `{ script }` → stream NDJSON con eventos `step-begin`, `step-end` y un evento final `result` o `error` |
+| `GET` | `/api/info` | Proveedor de IA activo (`anthropic` o `demo`) |
 | `GET` | `/api/ping` | Estado del runner visto desde la API |
 | `GET` | `/health` | Estado de la API |
 
@@ -65,7 +70,8 @@ Todos los servicios leen el `.env` de la raíz, pero cada uno toma solo las vari
 - `ANTHROPIC_API_KEY` solo la recibe la API; `INTERNAL_API_KEY`, la API y el runner. Ninguna llega al navegador.
 - La política de seguridad se aplica dos veces: en la API y de nuevo en el runner antes de ejecutar.
 - El proceso que ejecuta cada prueba solo hereda las variables imprescindibles (`PATH`, directorios temporales y de navegadores), nunca los secretos del runner.
-- Una sola ejecución a la vez y timeout por prueba (`RUN_TIMEOUT_MS`).
+- Una sola ejecución a la vez y timeout por prueba (`RUN_TIMEOUT_MS`). Al agotarse el tiempo o desconectarse el cliente se mata el árbol de procesos completo, navegador incluido.
+- El progreso llega al runner por un canal propio (descriptor 3) que el script no puede escribir, así que no puede falsear los pasos.
 - Las instrucciones del usuario y el contenido de las páginas se tratan como datos, nunca como instrucciones para el modelo.
 
 ### Límites conocidos

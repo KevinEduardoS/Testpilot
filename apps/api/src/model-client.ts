@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import type { FastifyBaseLogger } from 'fastify';
 import type { z } from 'zod';
+import type { AiBudget } from './ai-budget.js';
 import { HttpError } from './errors.js';
 
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -11,6 +12,7 @@ export type ModelSettings = {
   model: string;
   effort: Effort;
   maxTokens: number;
+  budget: AiBudget;
 };
 
 export type ModelRequest<Schema extends z.ZodType> = {
@@ -82,10 +84,11 @@ const parseOutput = <Schema extends z.ZodType>(
 };
 
 export const callModel = async <Schema extends z.ZodType>(
-  { client, model, effort, maxTokens }: ModelSettings,
+  { client, model, effort, maxTokens, budget }: ModelSettings,
   { systemPrompt, userMessage, schema, operation }: ModelRequest<Schema>,
   logger: FastifyBaseLogger,
 ): Promise<ModelOutcome<z.infer<Schema>>> => {
+  budget.assertAvailable();
   let response;
   try {
     response = await client.beta.messages.create({
@@ -102,6 +105,7 @@ export const callModel = async <Schema extends z.ZodType>(
     throw toHttpError(error);
   }
 
+  budget.record(response.usage);
   logger.info(
     {
       operation,

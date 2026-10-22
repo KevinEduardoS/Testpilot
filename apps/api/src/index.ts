@@ -1,7 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { createAiBudget } from './ai-budget.js';
 import { buildApp } from './app.js';
 import { env } from './config.js';
 import { createDemoGenerator } from './demo-generator.js';
+import { withDemoFallback } from './demo-fallback.js';
 import { createDemoRepairer } from './demo-repairer.js';
 import { loadPrompt } from './prompt-loader.js';
 import { createRunnerClient } from './runner-client.js';
@@ -22,13 +24,18 @@ const createAiServices = () => {
     effort: env.AI_EFFORT,
     maxTokens: env.AI_MAX_TOKENS,
     allowedDomains: env.ALLOWED_DOMAINS,
+    // Compartido: generación y reparación gastan del mismo presupuesto diario.
+    budget: createAiBudget({ dailyTokens: env.AI_DAILY_TOKEN_BUDGET }),
   };
   return {
-    generateTest: createTestGenerator({
-      ...settings,
-      systemPrompt: loadPrompt('generate-test.system'),
-    }),
-    repairTest: createTestRepairer({ ...settings, systemPrompt: loadPrompt('repair-test.system') }),
+    generateTest: withDemoFallback(
+      createTestGenerator({ ...settings, systemPrompt: loadPrompt('generate-test.system') }),
+      createDemoGenerator(),
+    ),
+    repairTest: withDemoFallback(
+      createTestRepairer({ ...settings, systemPrompt: loadPrompt('repair-test.system') }),
+      createDemoRepairer(),
+    ),
   };
 };
 

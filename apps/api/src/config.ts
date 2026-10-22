@@ -48,6 +48,8 @@ const aiSchema = z.discriminatedUnion('AI_PROVIDER', [
     AI_MAX_TOKENS: z.coerce.number().int().positive().default(16_000),
     AI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
     AI_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+    // Tokens de IA por día (entrada, salida y caché). Al agotarse, solo se responden los ejemplos.
+    AI_DAILY_TOKEN_BUDGET: z.coerce.number().int().positive().default(1_000_000),
   }),
   z.object({ AI_PROVIDER: z.literal('demo') }),
 ]);

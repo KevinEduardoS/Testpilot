@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import pino from 'pino';
 import type { GenerateTestRequest } from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
+import { createAiBudget } from './ai-budget.js';
 import { HttpError } from './errors.js';
 import { createTestGenerator } from './test-generator.js';
 
@@ -43,7 +44,7 @@ const apiMessage = (text: string, stopReason = 'end_turn') => ({
 
 type CapturedRequest = { headers: Headers; body: Record<string, unknown> };
 
-const setup = (status: number, payload: unknown) => {
+const setup = (status: number, payload: unknown, dailyTokens = 1_000_000) => {
   const captured: CapturedRequest[] = [];
   const client = new Anthropic({
     apiKey: 'test-key',
@@ -66,6 +67,7 @@ const setup = (status: number, payload: unknown) => {
     effort: 'medium',
     maxTokens: 16_000,
     allowedDomains: ['saucedemo.com'],
+    budget: createAiBudget({ dailyTokens }),
   });
   const logger = pino({ level: 'silent' });
   return {
@@ -136,6 +138,14 @@ describe('createTestGenerator', () => {
     expect(content.indexOf('<script_actual>')).toBeLessThan(
       content.indexOf('<instruccion_usuario>'),
     );
+  });
+
+  it('deja de llamar a la IA al agotar el presupuesto diario', async () => {
+    // Cada respuesta simulada gasta 30 tokens (10 de entrada y 20 de salida).
+    const { captured, run } = setup(200, apiMessage(JSON.stringify(modelOutput())), 30);
+    await run();
+    await expectHttpError(run(), 503, 'ai_budget_exhausted');
+    expect(captured).toHaveLength(1);
   });
 
   it('indica al modelo los dominios permitidos', async () => {

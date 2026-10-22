@@ -75,6 +75,8 @@ Todos los servicios leen el `.env` de la raíz, pero cada uno toma solo las vari
 
 `ALLOWED_DOMAINS` define los dominios que pueden visitar las pruebas, separados por comas (cada uno incluye sus subdominios). Por defecto es `saucedemo.com`. Con `*` se permite cualquiera, algo aceptable solo en desarrollo local. La API y el runner deben tener el mismo valor.
 
+`AI_DAILY_TOKEN_BUDGET` es el tope diario de tokens de IA (entrada, salida y caché; por defecto 1 000 000). Al agotarse, la API deja de llamar a Claude hasta el día siguiente (UTC) y los ejemplos se responden con los scripts de demo. El contador vive en memoria y es aproximado, así que conviene fijar también un límite de gasto en la consola de Anthropic.
+
 `SNAPSHOT_MAX_CHARS` limita el tamaño del árbol de accesibilidad que el runner captura al fallar una prueba (máximo y valor por defecto: 40 000 caracteres).
 
 ## Seguridad

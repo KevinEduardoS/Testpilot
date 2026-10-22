@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import pino from 'pino';
 import type { RepairTestRequest } from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
+import { createAiBudget } from './ai-budget.js';
 import { HttpError } from './errors.js';
 import { createTestRepairer } from './test-repairer.js';
 
@@ -101,6 +102,7 @@ const setup = (payload: unknown) => {
     effort: 'medium',
     maxTokens: 16_000,
     allowedDomains: ['saucedemo.com'],
+    budget: createAiBudget({ dailyTokens: 1_000_000 }),
   });
   return {
     bodies,

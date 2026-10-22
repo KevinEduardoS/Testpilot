@@ -4,6 +4,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
 import { HttpError } from './errors.js';
 import { callModel, invalidModelOutput, type ModelSettings } from './model-client.js';
+import { dataBlock, neutralizeTags } from './prompt-data.js';
 
 // Forma que devuelve el modelo; las reglas de negocio se validan después en toResponse.
 const modelOutputSchema = z.object({
@@ -36,20 +37,21 @@ const buildUserMessage = ({ instruction, baseUrl, context }: GenerateTestRequest
   // desde el cliente, así que va delimitado y el prompt lo trata como datos.
   if (context !== undefined) {
     parts.push(
-      '<instrucciones_anteriores>',
-      ...context.previousInstructions.map((previous, index) => `${index + 1}. ${previous}`),
-      '</instrucciones_anteriores>',
-      '<script_actual>',
-      context.currentScript,
-      '</script_actual>',
+      ...dataBlock(
+        'instrucciones_anteriores',
+        context.previousInstructions
+          .map((previous, index) => `${index + 1}. ${previous}`)
+          .join('\n'),
+      ),
+      ...dataBlock('script_actual', context.currentScript),
     );
   }
 
   parts.push(
-    '<instruccion_usuario>',
-    instruction,
-    '</instruccion_usuario>',
-    baseUrl === undefined ? 'No se indicó URL base.' : `<base_url>${baseUrl}</base_url>`,
+    ...dataBlock('instruccion_usuario', instruction),
+    baseUrl === undefined
+      ? 'No se indicó URL base.'
+      : `<base_url>${neutralizeTags(baseUrl)}</base_url>`,
   );
   return parts.join('\n');
 };

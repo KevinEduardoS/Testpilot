@@ -36,16 +36,16 @@ type HeaderProps = { api: ServiceStatus; runner: ServiceStatus; demoMode: boolea
 
 export const Header = ({ api, runner, demoMode }: HeaderProps) => (
   <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-zinc-950/70 backdrop-blur-md">
-    <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+    <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
       <div className="flex items-center gap-2.5">
         <Logo />
         <span className="text-[15px] font-semibold tracking-tight text-white">TestPilot</span>
-        <span className="rounded-md border border-indigo-400/20 bg-indigo-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">
+        <span className="hidden rounded-md border border-indigo-400/20 sm:inline bg-indigo-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">
           Beta
         </span>
         {demoMode && (
           <span
-            className="rounded-md border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300"
+            className="whitespace-nowrap rounded-md border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300"
             title="Sin IA configurada: solo los ejemplos predefinidos"
           >
             Modo demo

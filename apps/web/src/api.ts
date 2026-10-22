@@ -1,18 +1,17 @@
 import {
   apiErrorSchema,
   appInfoSchema,
-  executionResultSchema,
   generateTestResponseSchema,
   healthStatusSchema,
   runnerPingSchema,
   type ApiError,
   type AppInfo,
   type ExecuteTestRequest,
-  type ExecutionResult,
+  type ExecutionEvent,
   type GenerateTestRequest,
   type GenerateTestResponse,
 } from '@testpilot/shared';
-import type { z } from 'zod';
+import { readExecutionEvents } from '@testpilot/shared/execution-stream';
 import { env } from './config';
 
 const REQUEST_TIMEOUT_MS = 5000;
@@ -57,52 +56,87 @@ export const isRunnerUp = async (): Promise<boolean | null> => {
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError };
 export type GenerateResult = ApiResult<GenerateTestResponse>;
-export type ExecuteResult = ApiResult<ExecutionResult>;
 
 const failure = (error: string, message: string): { ok: false; error: ApiError } => ({
   ok: false,
   error: { error, message },
 });
 
-const postJson = async <T>(
+const networkFailure = (error: unknown) =>
+  error instanceof DOMException && error.name === 'TimeoutError'
+    ? failure('timeout', 'La operación tardó demasiado. Intenta de nuevo.')
+    : failure('network_error', 'No se pudo conectar con la API.');
+
+const errorFromResponse = async (response: Response): Promise<ApiError> => {
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    // Sin cuerpo JSON: se informa solo el estado HTTP.
+  }
+  const parsed = apiErrorSchema.safeParse(body);
+  return parsed.success
+    ? parsed.data
+    : failure('unexpected_response', `La API respondió con el estado ${response.status}.`).error;
+};
+
+const post = async (
   path: string,
   input: unknown,
-  schema: z.ZodType<T>,
   timeoutMs: number,
-): Promise<ApiResult<T>> => {
-  let response: Response;
-  let body: unknown;
-
+): Promise<{ ok: true; response: Response } | { ok: false; error: ApiError }> => {
   try {
-    response = await fetch(`${env.VITE_API_URL}${path}`, {
+    const response = await fetch(`${env.VITE_API_URL}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    body = await response.json();
+    return response.ok
+      ? { ok: true, response }
+      : { ok: false, error: await errorFromResponse(response) };
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'TimeoutError') {
-      return failure('timeout', 'La operación tardó demasiado. Intenta de nuevo.');
-    }
-    return failure('network_error', 'No se pudo conectar con la API.');
+    return networkFailure(error);
   }
-
-  if (response.ok) {
-    const parsed = schema.safeParse(body);
-    return parsed.success
-      ? { ok: true, data: parsed.data }
-      : failure('invalid_response', 'La API devolvió una respuesta con un formato inesperado.');
-  }
-
-  const parsedError = apiErrorSchema.safeParse(body);
-  return parsedError.success
-    ? { ok: false, error: parsedError.data }
-    : failure('unexpected_response', `La API respondió con el estado ${response.status}.`);
 };
 
-export const generateTest = (input: GenerateTestRequest): Promise<GenerateResult> =>
-  postJson('/api/tests/generate', input, generateTestResponseSchema, GENERATE_TIMEOUT_MS);
+export const generateTest = async (input: GenerateTestRequest): Promise<GenerateResult> => {
+  const result = await post('/api/tests/generate', input, GENERATE_TIMEOUT_MS);
+  if (!result.ok) {
+    return result;
+  }
+  let body: unknown;
+  try {
+    body = await result.response.json();
+  } catch (error) {
+    return networkFailure(error);
+  }
+  const parsed = generateTestResponseSchema.safeParse(body);
+  return parsed.success
+    ? { ok: true, data: parsed.data }
+    : failure('invalid_response', 'La API devolvió una respuesta con un formato inesperado.');
+};
 
-export const executeTest = (input: ExecuteTestRequest): Promise<ExecuteResult> =>
-  postJson('/api/tests/execute', input, executionResultSchema, EXECUTE_TIMEOUT_MS);
+// Ejecuta una prueba y entrega su progreso evento a evento. El último evento es siempre
+// "result" o "error", también cuando la API rechaza la petición o se pierde la conexión.
+export const streamExecution = async (
+  input: ExecuteTestRequest,
+  onEvent: (event: ExecutionEvent) => void,
+): Promise<void> => {
+  const result = await post('/api/tests/execute', input, EXECUTE_TIMEOUT_MS);
+  if (!result.ok) {
+    onEvent({ type: 'error', error: result.error });
+    return;
+  }
+  const { body } = result.response;
+  if (body === null) {
+    onEvent({
+      type: 'error',
+      error: failure('invalid_response', 'La API no devolvió eventos.').error,
+    });
+    return;
+  }
+  for await (const event of readExecutionEvents(body)) {
+    onEvent(event);
+  }
+};

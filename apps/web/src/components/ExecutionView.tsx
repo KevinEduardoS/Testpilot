@@ -9,13 +9,8 @@ import {
   Timer,
   type LucideIcon,
 } from 'lucide-react';
-import type { ExecuteResult } from '../api';
+import type { ExecutionState, LiveStep } from '../execution';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
-
-export type ExecutionState =
-  | { phase: 'idle' }
-  | { phase: 'loading'; startedAt: number }
-  | { phase: 'done'; result: ExecuteResult };
 
 const formatDuration = (ms: number) =>
   ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
@@ -46,27 +41,62 @@ const statusBanner: Record<
   },
 };
 
-const LoadingView = ({ startedAt }: { startedAt: number }) => {
-  const elapsed = useElapsedSeconds(startedAt);
-  return (
-    <div className="flex items-center justify-between p-5">
-      <div className="flex items-center gap-2.5 text-sm text-zinc-300">
-        <LoaderCircle className="h-4 w-4 animate-spin text-indigo-400" />
-        Ejecutando la prueba en Chromium…
-      </div>
-      <span className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums text-zinc-500">
-        <Clock className="h-3.5 w-3.5" />
-        {elapsed}s
-      </span>
-    </div>
-  );
-};
-
 const ErrorBox = ({ message }: { message: string }) => (
   <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg border border-rose-400/15 bg-rose-950/20 p-3 font-mono text-xs leading-relaxed text-rose-200/90">
     {message}
   </pre>
 );
+
+const StepIcon = ({ status }: { status: LiveStep['status'] }) => {
+  switch (status) {
+    case 'running':
+      return <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-indigo-400" />;
+    case 'passed':
+      return <CircleCheck className="h-4 w-4 shrink-0 text-emerald-400" />;
+    case 'failed':
+      return <CircleX className="h-4 w-4 shrink-0 text-rose-400" />;
+  }
+};
+
+const StepList = ({ steps }: { steps: LiveStep[] }) => (
+  <ol className="space-y-2">
+    {steps.map((step, index) => (
+      <li key={`${index}-${step.title}`} className="animate-fade-in">
+        <div className="flex items-center gap-3 text-sm">
+          <StepIcon status={step.status} />
+          <span className={`flex-1 ${step.status === 'running' ? 'text-white' : 'text-zinc-300'}`}>
+            {step.title}
+          </span>
+          {step.durationMs !== null && (
+            <span className="font-mono text-[11px] tabular-nums text-zinc-500">
+              {formatDuration(step.durationMs)}
+            </span>
+          )}
+        </div>
+        {step.error !== null && <ErrorBox message={step.error} />}
+      </li>
+    ))}
+  </ol>
+);
+
+const RunningView = ({ startedAt, steps }: { startedAt: number; steps: LiveStep[] }) => {
+  const elapsed = useElapsedSeconds(startedAt);
+  return (
+    <div className="space-y-5 p-5">
+      <div className="flex items-center justify-between rounded-lg border border-indigo-400/20 bg-indigo-400/10 px-4 py-3 text-indigo-200">
+        <span className="flex items-center gap-2.5 text-sm font-medium">
+          <LoaderCircle className="h-4 w-4 animate-spin" />
+          {steps.length === 0 ? 'Abriendo el navegador…' : 'Ejecutando en Chromium…'}
+        </span>
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums opacity-80">
+          <Clock className="h-3.5 w-3.5" />
+          {elapsed}s
+        </span>
+      </div>
+      <StepList steps={steps} />
+    </div>
+  );
+};
 
 const ResultView = ({ result }: { result: ExecutionResult }) => {
   const banner = statusBanner[result.status];
@@ -87,26 +117,7 @@ const ResultView = ({ result }: { result: ExecutionResult }) => {
         </span>
       </div>
 
-      {result.steps.length > 0 && (
-        <ol className="space-y-2">
-          {result.steps.map((step, index) => (
-            <li key={`${index}-${step.title}`}>
-              <div className="flex items-center gap-3 text-sm">
-                {step.status === 'passed' ? (
-                  <CircleCheck className="h-4 w-4 shrink-0 text-emerald-400" />
-                ) : (
-                  <CircleX className="h-4 w-4 shrink-0 text-rose-400" />
-                )}
-                <span className="flex-1 text-zinc-300">{step.title}</span>
-                <span className="font-mono text-[11px] tabular-nums text-zinc-500">
-                  {formatDuration(step.durationMs)}
-                </span>
-              </div>
-              {step.error !== null && <ErrorBox message={step.error} />}
-            </li>
-          ))}
-        </ol>
-      )}
+      {result.steps.length > 0 && <StepList steps={result.steps} />}
 
       {result.error !== null && !stepHasError && <ErrorBox message={result.error} />}
 
@@ -127,26 +138,26 @@ const ResultView = ({ result }: { result: ExecutionResult }) => {
 };
 
 export const ExecutionView = ({ state }: { state: ExecutionState }) => {
-  if (state.phase === 'idle') {
-    return null;
-  }
-  if (state.phase === 'loading') {
-    return <LoadingView startedAt={state.startedAt} />;
-  }
-  if (!state.result.ok) {
-    const { error } = state.result;
-    return (
-      <div className="animate-fade-in p-5">
-        <div className="flex items-center gap-2.5 text-sm font-medium text-rose-300">
-          <CircleAlert className="h-4 w-4" />
-          No se pudo ejecutar la prueba
+  switch (state.phase) {
+    case 'idle':
+      return null;
+    case 'running':
+      return <RunningView startedAt={state.startedAt} steps={state.steps} />;
+    case 'done':
+      if (state.outcome.ok) {
+        return <ResultView result={state.outcome.result} />;
+      }
+      return (
+        <div className="animate-fade-in p-5">
+          <div className="flex items-center gap-2.5 text-sm font-medium text-rose-300">
+            <CircleAlert className="h-4 w-4" />
+            No se pudo ejecutar la prueba
+          </div>
+          <p className="mt-2 text-sm text-zinc-400">{state.outcome.error.message}</p>
+          {state.outcome.error.details && state.outcome.error.details.length > 0 && (
+            <ErrorBox message={state.outcome.error.details.join('\n')} />
+          )}
         </div>
-        <p className="mt-2 text-sm text-zinc-400">{error.message}</p>
-        {error.details && error.details.length > 0 && (
-          <ErrorBox message={error.details.join('\n')} />
-        )}
-      </div>
-    );
+      );
   }
-  return <ResultView result={state.result.data} />;
 };

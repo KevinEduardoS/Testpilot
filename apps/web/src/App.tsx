@@ -1,99 +1,72 @@
-import { useEffect, useState } from 'react';
-import { isApiUp, isRunnerUp } from './api';
-
-type ServiceStatus = 'checking' | 'up' | 'down';
-
-const statusLabels: Record<ServiceStatus, string> = {
-  checking: 'Verificando',
-  up: 'Conectado',
-  down: 'Sin conexión',
-};
-
-const toStatus = (up: boolean): ServiceStatus => (up ? 'up' : 'down');
+import { useRef, useState } from 'react';
+import { generateTest } from './api';
+import { Composer } from './components/Composer';
+import { Header } from './components/Header';
+import { ResultPanel, type GenerationState } from './components/ResultPanel';
+import { useServiceStatus } from './hooks/useServiceStatus';
 
 export default function App() {
-  const [apiStatus, setApiStatus] = useState<ServiceStatus>('checking');
-  const [runnerStatus, setRunnerStatus] = useState<ServiceStatus>('checking');
+  const status = useServiceStatus();
+  const [instruction, setInstruction] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [state, setState] = useState<GenerationState>({ phase: 'idle' });
+  const resultRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    void isApiUp().then((up) => setApiStatus(toStatus(up)));
-    void isRunnerUp().then((up) => setRunnerStatus(toStatus(up)));
-  }, []);
-
-  const overallStatus: ServiceStatus =
-    apiStatus === 'checking' || runnerStatus === 'checking'
-      ? 'checking'
-      : apiStatus === 'up' && runnerStatus === 'up'
-        ? 'up'
-        : 'down';
+  const submit = async () => {
+    setState({ phase: 'loading', startedAt: Date.now() });
+    // En pantallas pequeñas el resultado queda debajo del formulario.
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    const trimmedUrl = baseUrl.trim();
+    const result = await generateTest({
+      instruction: instruction.trim(),
+      ...(trimmedUrl === '' ? {} : { baseUrl: trimmedUrl }),
+    });
+    setState({ phase: 'done', result });
+  };
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100">
-      <div className="mx-auto max-w-5xl space-y-8">
-        <header className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/50">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-cyan-400">TestPilot</p>
-              <h1 className="mt-2 text-3xl font-bold text-white">Generación de pruebas con IA</h1>
-            </div>
-            <span
-              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                overallStatus === 'up'
-                  ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40'
-                  : 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/40'
-              }`}
-            >
-              {statusLabels[overallStatus]}
-            </span>
-          </div>
+    <div className="flex min-h-screen flex-col">
+      <Header api={status.api} runner={status.runner} />
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-              <p className="text-sm text-slate-400">API</p>
-              <p className="mt-2 text-xl font-semibold">{statusLabels[apiStatus]}</p>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-              <p className="text-sm text-slate-400">Runner</p>
-              <p className="mt-2 text-xl font-semibold">{statusLabels[runnerStatus]}</p>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-              <p className="text-sm text-slate-400">Infra</p>
-              <p className="mt-2 text-xl font-semibold">Docker + TS</p>
-            </div>
-          </div>
-        </header>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-10 sm:px-6 sm:pt-14">
+        <div className="mb-10 max-w-3xl">
+          <p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-indigo-400">
+            Pruebas end-to-end con IA
+          </p>
+          <h1 className="text-balance text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            Describe el caso. TestPilot escribe la prueba.
+          </h1>
+          <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-zinc-400">
+            Convierte instrucciones en lenguaje natural en scripts de Playwright con pasos
+            legibles, selectores accesibles y validación de seguridad.
+          </p>
+        </div>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">Comando de prueba</h2>
-            <span className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1 text-xs uppercase tracking-[0.2em] text-cyan-300">
-              chat
-            </span>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <div className="lg:sticky lg:top-20">
+            <Composer
+              instruction={instruction}
+              baseUrl={baseUrl}
+              loading={state.phase === 'loading'}
+              onInstructionChange={setInstruction}
+              onBaseUrlChange={setBaseUrl}
+              onSubmit={() => void submit()}
+            />
           </div>
-
-          <div className="space-y-4">
-            <label className="block">
-              <span className="mb-2 block text-sm text-slate-300">Instrucción</span>
-              <textarea
-                value="Inicia sesión en saucedemo.com con un usuario inválido y verifica que aparezca el mensaje de error."
-                readOnly
-                className="min-h-[120px] w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200 outline-none ring-0"
-              />
-            </label>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                value="https://www.saucedemo.com"
-                readOnly
-                className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-200 outline-none"
-              />
-              <button className="rounded-xl bg-cyan-500 px-5 py-3 font-medium text-slate-950 transition hover:bg-cyan-400">
-                Ejecutar
-              </button>
-            </div>
+          <div ref={resultRef} className="scroll-mt-20">
+            <ResultPanel state={state} />
           </div>
-        </section>
-      </div>
-    </main>
+        </div>
+      </main>
+
+      <footer className="border-t border-white/[0.06]">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 text-xs text-zinc-600 sm:px-6">
+          <span>TestPilot</span>
+          <span>Playwright · Claude · TypeScript</span>
+        </div>
+      </footer>
+    </div>
   );
 }

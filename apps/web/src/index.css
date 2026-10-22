@@ -2,33 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  background: #020817;
-  color: #e2e8f0;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  :root {
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply min-h-screen bg-zinc-950 font-sans text-zinc-300;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgb(99 102 241 / 0.12), transparent),
+      radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size:
+      100% 100%,
+      24px 24px;
+  }
+
+  ::selection {
+    @apply bg-indigo-500/30 text-white;
+  }
 }
 
-html,
-body,
-#root {
-  min-height: 100%;
-  margin: 0;
-}
+@layer components {
+  .card {
+    @apply rounded-xl border border-white/[0.08] bg-zinc-900/60 shadow-xl shadow-black/20 backdrop-blur-sm;
+  }
 
-body {
-  min-height: 100vh;
-  background: radial-gradient(circle at top, rgba(14, 165, 233, 0.18), transparent 30%), #020817;
-}
-
-button,
-input,
-textarea {
-  font: inherit;
+  .field {
+    @apply w-full rounded-lg border border-white/10 bg-zinc-950/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 transition focus:border-indigo-400/60 focus:outline-none focus:ring-4 focus:ring-indigo-500/10;
+  }
 }

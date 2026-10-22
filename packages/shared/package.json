@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./script-policy": "./src/script-policy.ts"
+    "./script-policy": "./src/script-policy.ts",
+    "./execution-stream": "./src/execution-stream.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

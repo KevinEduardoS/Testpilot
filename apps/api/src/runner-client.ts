@@ -1,4 +1,5 @@
-import { apiErrorSchema, executionEventSchema, type ExecutionEvent } from '@testpilot/shared';
+import { apiErrorSchema, type ExecutionEvent } from '@testpilot/shared';
+import { readExecutionEvents } from '@testpilot/shared/execution-stream';
 import { HttpError } from './errors.js';
 
 // Margen sobre el timeout de la prueba para el arranque del navegador y la respuesta del runner.
@@ -18,50 +19,6 @@ export type TestExecutor = (
   signal: AbortSignal,
 ) => Promise<AsyncIterable<ExecutionEvent>>;
 
-const streamError = (error: string, message: string): ExecutionEvent => ({
-  type: 'error',
-  error: { error, message },
-});
-
-async function* readEvents(body: ReadableStream<Uint8Array>): AsyncIterable<ExecutionEvent> {
-  let buffer = '';
-  try {
-    for await (const chunk of body.pipeThrough(new TextDecoderStream())) {
-      buffer += chunk;
-      let newline = buffer.indexOf('\n');
-      while (newline !== -1) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        newline = buffer.indexOf('\n');
-        if (line === '') {
-          continue;
-        }
-
-        let json: unknown;
-        try {
-          json = JSON.parse(line);
-        } catch {
-          yield streamError('invalid_runner_response', 'El runner envió un evento inválido.');
-          return;
-        }
-        const event = executionEventSchema.safeParse(json);
-        if (!event.success) {
-          yield streamError('invalid_runner_response', 'El runner envió un evento inválido.');
-          return;
-        }
-        yield event.data;
-        if (event.data.type === 'result' || event.data.type === 'error') {
-          return;
-        }
-      }
-    }
-  } catch {
-    yield streamError('runner_unavailable', 'Se perdió la conexión con el runner.');
-    return;
-  }
-  yield streamError('runner_error', 'El runner cerró la conexión sin un resultado.');
-}
-
 export const createRunnerClient =
   ({ runnerUrl, internalApiKey, runTimeoutMs }: RunnerClientOptions): TestExecutor =>
   async (script, signal) => {
@@ -78,7 +35,7 @@ export const createRunnerClient =
     }
 
     if (response.ok && response.body !== null) {
-      return readEvents(response.body);
+      return readExecutionEvents(response.body);
     }
 
     let body: unknown = null;

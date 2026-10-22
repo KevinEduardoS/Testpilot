@@ -52,7 +52,7 @@ describe('checkScriptPolicy', () => {
     ['cadena de prototipos', `const F = page.constructor.constructor;`],
     ['corchetes con literal', `const F = page['constructor'];`],
     ['corchetes dinámicos', `const k = 'constr' + 'uctor'; const F = page[k];`],
-    ['plantilla con sustitución', "const k = 'tor'; const F = page[`construc${k}`];",],
+    ['plantilla con sustitución', "const k = 'tor'; const F = page[`construc${k}`];"],
     ['desestructuración', `const { constructor: C } = page;`],
     ['desestructuración abreviada', `const { evaluate } = page;`],
     ['Reflect', `const e = Reflect.get(page, 'evaluate');`],

@@ -119,8 +119,7 @@ export const checkScriptPolicy = (script: string): ScriptPolicyResult => {
         bindings !== undefined &&
         ts.isNamedImports(bindings) &&
         bindings.elements.every(
-          (element) =>
-            element.propertyName === undefined && ALLOWED_IMPORTS.has(element.name.text),
+          (element) => element.propertyName === undefined && ALLOWED_IMPORTS.has(element.name.text),
         );
 
       if (hasOnlyAllowedBindings) {

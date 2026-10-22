@@ -85,7 +85,7 @@ describe('createRunnerClient', () => {
       ndjson([{ type: 'desconocido' }, { type: 'result', result: passed }]),
     );
     await expect(collect(await run(execute))).resolves.toEqual([
-      { type: 'error', error: expect.objectContaining({ error: 'invalid_runner_response' }) },
+      { type: 'error', error: expect.objectContaining({ error: 'invalid_event' }) },
     ]);
   });
 
@@ -97,7 +97,7 @@ describe('createRunnerClient', () => {
     const events = await collect(await run(execute));
     expect(events.at(-1)).toEqual({
       type: 'error',
-      error: expect.objectContaining({ error: 'runner_error' }),
+      error: expect.objectContaining({ error: 'stream_incomplete' }),
     });
   });
 

@@ -114,7 +114,8 @@ export const EXAMPLES = [
   {
     id: 'invalid-login',
     label: 'Login con credenciales inválidas',
-    instruction: 'Inicia sesión con un usuario inválido y verifica que aparezca el mensaje de error.',
+    instruction:
+      'Inicia sesión con un usuario inválido y verifica que aparezca el mensaje de error.',
     baseUrl: 'https://www.saucedemo.com',
   },
   {

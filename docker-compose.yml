@@ -37,6 +37,13 @@ services:
       WEB_ORIGIN: http://localhost:5173
       DATABASE_URL: postgresql://testpilot:testpilot@postgres:5432/testpilot
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Define INTERNAL_API_KEY en .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?Define ANTHROPIC_API_KEY en .env}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      AI_EFFORT: ${AI_EFFORT:-medium}
+      AI_MAX_TOKENS: ${AI_MAX_TOKENS:-16000}
+      AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-120000}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-10}
     ports:
       - '3001:3001'
     healthcheck:

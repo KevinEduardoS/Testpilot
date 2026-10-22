@@ -1,54 +1,32 @@
-import cors from '@fastify/cors';
-import Fastify from 'fastify';
-import { healthStatusSchema, runnerPingSchema, type RunnerPing } from '@testpilot/shared';
+import Anthropic from '@anthropic-ai/sdk';
+import { buildApp } from './app.js';
 import { env } from './config.js';
+import { loadPrompt } from './prompt-loader.js';
+import { createTestGenerator } from './test-generator.js';
 
-const RUNNER_PING_TIMEOUT_MS = 3000;
-
-const app = Fastify({ logger: true });
-
-await app.register(cors, { origin: env.WEB_ORIGIN });
-
-app.get('/health', async () => {
-  const payload = {
-    status: 'ok',
-    service: 'api',
-    timestamp: new Date().toISOString(),
-  };
-
-  return healthStatusSchema.parse(payload);
+const client = new Anthropic({
+  apiKey: env.ANTHROPIC_API_KEY,
+  maxRetries: env.AI_MAX_RETRIES,
+  timeout: env.AI_TIMEOUT_MS,
 });
 
-app.get('/api/ping', async (request, reply) => {
-  let result: RunnerPing;
-
-  try {
-    const response = await fetch(`${env.RUNNER_URL}/health`, {
-      headers: {
-        'x-internal-api-key': env.INTERNAL_API_KEY,
-      },
-      signal: AbortSignal.timeout(RUNNER_PING_TIMEOUT_MS),
-    });
-
-    result = response.ok
-      ? { ok: true, message: 'runner reachable' }
-      : { ok: false, message: `runner responded with status ${response.status}` };
-  } catch (error) {
-    request.log.warn({ err: error }, 'runner unreachable');
-    result = { ok: false, message: 'runner unreachable' };
-  }
-
-  reply.code(result.ok ? 200 : 503);
-  return runnerPingSchema.parse(result);
+const app = await buildApp({
+  webOrigin: env.WEB_ORIGIN,
+  runnerUrl: env.RUNNER_URL,
+  internalApiKey: env.INTERNAL_API_KEY,
+  rateLimitPerHour: env.RATE_LIMIT_PER_HOUR,
+  generateTest: createTestGenerator({
+    client,
+    systemPrompt: loadPrompt('generate-test.system'),
+    model: env.ANTHROPIC_MODEL,
+    effort: env.AI_EFFORT,
+    maxTokens: env.AI_MAX_TOKENS,
+  }),
 });
 
-const start = async () => {
-  try {
-    await app.listen({ port: env.API_PORT, host: '0.0.0.0' });
-  } catch (error) {
-    app.log.error(error);
-    process.exit(1);
-  }
-};
-
-void start();
+try {
+  await app.listen({ port: env.API_PORT, host: '0.0.0.0' });
+} catch (error) {
+  app.log.error(error);
+  process.exit(1);
+}

@@ -1,0 +1,98 @@
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
+import {
+  generateTestRequestSchema,
+  generateTestResponseSchema,
+  healthStatusSchema,
+  runnerPingSchema,
+  type ApiError,
+  type RunnerPing,
+} from '@testpilot/shared';
+import Fastify, { type FastifyServerOptions } from 'fastify';
+import { ZodError } from 'zod';
+import { HttpError } from './errors.js';
+import type { TestGenerator } from './test-generator.js';
+
+const RUNNER_PING_TIMEOUT_MS = 3000;
+
+export type AppOptions = {
+  webOrigin: string;
+  runnerUrl: string;
+  internalApiKey: string;
+  rateLimitPerHour: number;
+  generateTest: TestGenerator;
+  logger?: FastifyServerOptions['logger'];
+};
+
+export const buildApp = async (options: AppOptions) => {
+  const app = Fastify({ logger: options.logger ?? true });
+
+  await app.register(cors, { origin: options.webOrigin });
+  await app.register(rateLimit, { global: false });
+
+  app.setErrorHandler<Error & { statusCode?: number }>((error, request, reply) => {
+    let body: ApiError;
+    let statusCode: number;
+
+    if (error instanceof HttpError) {
+      statusCode = error.statusCode;
+      body = { error: error.code, message: error.message, details: error.details };
+    } else if (error instanceof ZodError) {
+      statusCode = 400;
+      body = {
+        error: 'invalid_request',
+        message: 'La solicitud no es válida.',
+        details: error.issues.map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`),
+      };
+    } else if (error.statusCode === 429) {
+      statusCode = 429;
+      body = { error: 'rate_limited', message: 'Límite de solicitudes alcanzado. Intenta más tarde.' };
+    } else if (error.statusCode !== undefined && error.statusCode < 500) {
+      statusCode = error.statusCode;
+      body = { error: 'bad_request', message: error.message };
+    } else {
+      statusCode = 500;
+      body = { error: 'internal_error', message: 'Error interno del servidor.' };
+    }
+
+    if (statusCode >= 500) {
+      request.log.error({ err: error }, 'request failed');
+    }
+    return reply.code(statusCode).send(body);
+  });
+
+  app.get('/health', async () =>
+    healthStatusSchema.parse({ status: 'ok', service: 'api', timestamp: new Date().toISOString() }),
+  );
+
+  app.get('/api/ping', async (request, reply) => {
+    let result: RunnerPing;
+
+    try {
+      const response = await fetch(`${options.runnerUrl}/health`, {
+        headers: { 'x-internal-api-key': options.internalApiKey },
+        signal: AbortSignal.timeout(RUNNER_PING_TIMEOUT_MS),
+      });
+      result = response.ok
+        ? { ok: true, message: 'runner reachable' }
+        : { ok: false, message: `runner responded with status ${response.status}` };
+    } catch (error) {
+      request.log.warn({ err: error }, 'runner unreachable');
+      result = { ok: false, message: 'runner unreachable' };
+    }
+
+    reply.code(result.ok ? 200 : 503);
+    return runnerPingSchema.parse(result);
+  });
+
+  app.post(
+    '/api/tests/generate',
+    { config: { rateLimit: { max: options.rateLimitPerHour, timeWindow: '1 hour' } } },
+    async (request) => {
+      const input = generateTestRequestSchema.parse(request.body);
+      return generateTestResponseSchema.parse(await options.generateTest(input, request.log));
+    },
+  );
+
+  return app;
+};

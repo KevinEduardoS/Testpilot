@@ -2,24 +2,34 @@ import Anthropic from '@anthropic-ai/sdk';
 import { buildApp } from './app.js';
 import { env } from './config.js';
 import { createDemoGenerator } from './demo-generator.js';
+import { createDemoRepairer } from './demo-repairer.js';
 import { loadPrompt } from './prompt-loader.js';
 import { createRunnerClient } from './runner-client.js';
 import { createTestGenerator } from './test-generator.js';
+import { createTestRepairer } from './test-repairer.js';
 
-const generateTest =
-  env.AI_PROVIDER === 'demo'
-    ? createDemoGenerator()
-    : createTestGenerator({
-        client: new Anthropic({
-          apiKey: env.ANTHROPIC_API_KEY,
-          maxRetries: env.AI_MAX_RETRIES,
-          timeout: env.AI_TIMEOUT_MS,
-        }),
-        systemPrompt: loadPrompt('generate-test.system'),
-        model: env.ANTHROPIC_MODEL,
-        effort: env.AI_EFFORT,
-        maxTokens: env.AI_MAX_TOKENS,
-      });
+const createAiServices = () => {
+  if (env.AI_PROVIDER === 'demo') {
+    return { generateTest: createDemoGenerator(), repairTest: createDemoRepairer() };
+  }
+  const settings = {
+    client: new Anthropic({
+      apiKey: env.ANTHROPIC_API_KEY,
+      maxRetries: env.AI_MAX_RETRIES,
+      timeout: env.AI_TIMEOUT_MS,
+    }),
+    model: env.ANTHROPIC_MODEL,
+    effort: env.AI_EFFORT,
+    maxTokens: env.AI_MAX_TOKENS,
+  };
+  return {
+    generateTest: createTestGenerator({
+      ...settings,
+      systemPrompt: loadPrompt('generate-test.system'),
+    }),
+    repairTest: createTestRepairer({ ...settings, systemPrompt: loadPrompt('repair-test.system') }),
+  };
+};
 
 const app = await buildApp({
   webOrigin: env.WEB_ORIGIN,
@@ -27,7 +37,7 @@ const app = await buildApp({
   internalApiKey: env.INTERNAL_API_KEY,
   rateLimitPerHour: env.RATE_LIMIT_PER_HOUR,
   aiProvider: env.AI_PROVIDER,
-  generateTest,
+  ...createAiServices(),
   executeTest: createRunnerClient({
     runnerUrl: env.RUNNER_URL,
     internalApiKey: env.INTERNAL_API_KEY,

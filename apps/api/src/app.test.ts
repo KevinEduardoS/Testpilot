@@ -3,16 +3,25 @@ import {
   type ExecutionEvent,
   type ExecutionResult,
   type GenerateTestResponse,
+  type RepairTestRequest,
+  type RepairTestResponse,
 } from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
 import { HttpError } from './errors.js';
 import type { TestExecutor } from './runner-client.js';
 import type { TestGenerator } from './test-generator.js';
+import type { TestRepairer } from './test-repairer.js';
 
 const okResponse: GenerateTestResponse = {
   status: 'ok',
   test: { title: 't', steps: ['s'], script: 'script', assumptions: [], warnings: [] },
+};
+
+const fixedResponse: RepairTestResponse = {
+  status: 'fixed',
+  diagnosis: { category: 'selector', summary: 'el selector cambió' },
+  test: okResponse.test,
 };
 
 const passed: ExecutionResult = {
@@ -42,11 +51,19 @@ const parseEvents = (body: string) =>
     .split('\n')
     .map((line) => executionEventSchema.parse(JSON.parse(line)));
 
-const setup = async (
-  generateTest: TestGenerator = async () => okResponse,
+type SetupOptions = {
+  generateTest?: TestGenerator;
+  repairTest?: TestRepairer;
+  executeTest?: TestExecutor;
+  rateLimitPerHour?: number;
+};
+
+const setup = async ({
+  generateTest = async () => okResponse,
+  repairTest = async () => fixedResponse,
+  executeTest = async () => toEvents([{ type: 'result', result: passed }]),
   rateLimitPerHour = 10,
-  executeTest: TestExecutor = async () => toEvents([{ type: 'result', result: passed }]),
-) =>
+}: SetupOptions = {}) =>
   buildApp({
     webOrigin: 'http://localhost:5173',
     // Puerto 9 (discard): nada escucha ahí, así que el runner aparece caído.
@@ -55,6 +72,7 @@ const setup = async (
     rateLimitPerHour,
     aiProvider: 'demo',
     generateTest,
+    repairTest,
     executeTest,
     logger: false,
   });
@@ -89,8 +107,12 @@ describe('POST /api/tests/generate', () => {
   });
 
   it('propaga los HttpError del generador', async () => {
-    const app = await setup(async () => {
-      throw new HttpError(502, 'unsafe_script', 'inseguro', ['línea 1: "eval" no está permitido']);
+    const app = await setup({
+      generateTest: async () => {
+        throw new HttpError(502, 'unsafe_script', 'inseguro', [
+          'línea 1: "eval" no está permitido',
+        ]);
+      },
     });
     const response = await generate(app, { instruction: 'probar' });
     expect(response.statusCode).toBe(502);
@@ -102,8 +124,10 @@ describe('POST /api/tests/generate', () => {
   });
 
   it('oculta los errores inesperados', async () => {
-    const app = await setup(async () => {
-      throw new Error('detalle interno');
+    const app = await setup({
+      generateTest: async () => {
+        throw new Error('detalle interno');
+      },
     });
     const response = await generate(app, { instruction: 'probar' });
     expect(response.statusCode).toBe(500);
@@ -114,7 +138,7 @@ describe('POST /api/tests/generate', () => {
   });
 
   it('aplica el límite de solicitudes por hora', async () => {
-    const app = await setup(undefined, 2);
+    const app = await setup({ rateLimitPerHour: 2 });
     const statuses = [];
     for (let i = 0; i < 3; i += 1) {
       statuses.push((await generate(app, { instruction: 'probar' })).statusCode);
@@ -143,9 +167,11 @@ describe('POST /api/tests/execute', () => {
       { type: 'step-begin', index: 0, title: 'paso' },
       { type: 'result', result: passed },
     ];
-    const app = await setup(undefined, 10, async (script) => {
-      scripts.push(script);
-      return toEvents(events);
+    const app = await setup({
+      executeTest: async (script) => {
+        scripts.push(script);
+        return toEvents(events);
+      },
     });
     const response = await execute(app, { script: validScript });
     expect(response.statusCode).toBe(200);
@@ -156,9 +182,11 @@ describe('POST /api/tests/execute', () => {
 
   it('rechaza con 422 un script inseguro sin llamar al runner', async () => {
     let called = false;
-    const app = await setup(undefined, 10, async () => {
-      called = true;
-      return toEvents([]);
+    const app = await setup({
+      executeTest: async () => {
+        called = true;
+        return toEvents([]);
+      },
     });
     const response = await execute(app, {
       script: validScript.replace('await expect', "eval('x'); await expect"),
@@ -169,12 +197,64 @@ describe('POST /api/tests/execute', () => {
   });
 
   it('propaga los errores del runner', async () => {
-    const app = await setup(undefined, 10, async () => {
-      throw new HttpError(503, 'runner_busy', 'ocupado');
+    const app = await setup({
+      executeTest: async () => {
+        throw new HttpError(503, 'runner_busy', 'ocupado');
+      },
     });
     const response = await execute(app, { script: validScript });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ error: 'runner_busy', message: 'ocupado' });
+  });
+});
+
+describe('POST /api/tests/repair', () => {
+  const repairRequest: RepairTestRequest = {
+    instructions: ['probar el título'],
+    script: validScript,
+    failure: { status: 'failed', error: 'no encontrado', steps: [], pageSnapshot: '- heading "x"' },
+  };
+  const repair = (app: Awaited<ReturnType<typeof setup>>, payload: unknown) =>
+    app.inject({ method: 'POST', url: '/api/tests/repair', payload: payload as object });
+
+  it('devuelve el diagnóstico del reparador', async () => {
+    const received: RepairTestRequest[] = [];
+    const app = await setup({
+      repairTest: async (request) => {
+        received.push(request);
+        return fixedResponse;
+      },
+    });
+    const response = await repair(app, repairRequest);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(fixedResponse);
+    expect(received).toEqual([repairRequest]);
+  });
+
+  it('rechaza con 422 un script inseguro sin llamar al reparador', async () => {
+    let called = false;
+    const app = await setup({
+      repairTest: async () => {
+        called = true;
+        return fixedResponse;
+      },
+    });
+    const response = await repair(app, {
+      ...repairRequest,
+      script: validScript.replace('await expect', "eval('x'); await expect"),
+    });
+    expect(response.statusCode).toBe(422);
+    expect(called).toBe(false);
+  });
+
+  it('rechaza con 400 una ejecución que pasó', async () => {
+    const app = await setup();
+    const response = await repair(app, {
+      ...repairRequest,
+      failure: { ...repairRequest.failure, status: 'passed' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'invalid_request' });
   });
 });
 

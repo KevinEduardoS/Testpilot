@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_SCRIPT_LENGTH } from './index.js';
-import { checkScriptPolicy } from './script-policy.js';
+import { checkScriptPolicy, countAssertions } from './script-policy.js';
 
 const validScript = `import { test, expect } from '@playwright/test';
 
@@ -110,5 +110,21 @@ test('sin pasos', async ({ page }) => {
     expect(checkScriptPolicy(withBody(`const items = ['a']; const first = items[0];`))).toEqual({
       ok: true,
     });
+  });
+});
+
+describe('countAssertions', () => {
+  it('cuenta expect, expect.soft y expect.poll, no los matchers encadenados', () => {
+    const script = withBody(`
+    await expect(page.getByText('a')).toBeVisible();
+    await expect.soft(page.getByText('b')).not.toBeVisible();
+    await expect.poll(async () => 1).toBe(1);
+    const expectText = 'expect(';`);
+    // Más la aserción que añade withBody.
+    expect(countAssertions(script)).toBe(4);
+  });
+
+  it('devuelve 0 sin aserciones', () => {
+    expect(countAssertions(`test('x', async () => {});`)).toBe(0);
   });
 });

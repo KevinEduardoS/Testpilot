@@ -93,7 +93,71 @@ test('enviar el login vacío exige el usuario', async ({ page }) => {
 });
 `,
   },
+  // Falla: el título no es un heading en el árbol de accesibilidad. Lo corrige la reparación.
+  'catalog-title': {
+    title: 'El catálogo muestra el título Products',
+    steps: ['Iniciar sesión con el usuario de demostración', 'Verificar el título del catálogo'],
+    assumptions: [
+      'Se usan las credenciales de demostración que publica el propio sitio (standard_user / secret_sauce).',
+      'El título del catálogo es un encabezado de la página.',
+    ],
+    script: `import { test, expect } from '@playwright/test';
+
+test('el catálogo muestra el título Products', async ({ page }) => {
+  await test.step('Iniciar sesión con el usuario de demostración', async () => {
+    await page.goto('https://www.saucedemo.com');
+    await page.getByPlaceholder('Username').fill('standard_user');
+    await page.getByPlaceholder('Password').fill('secret_sauce');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page).toHaveURL(/inventory\\.html/);
+  });
+
+  await test.step('Verificar el título del catálogo', async () => {
+    await expect(page.getByRole('heading', { name: 'Products' })).toBeVisible();
+  });
+});
+`,
+  },
+  // Falla por un bug real del sitio: con problem_user la ordenación no tiene efecto.
+  'sort-by-price': {
+    title: 'Ordenar por precio ascendente muestra primero el producto más barato',
+    steps: [
+      'Iniciar sesión con problem_user',
+      'Ordenar por precio de menor a mayor',
+      'Verificar el precio del primer producto',
+    ],
+    assumptions: ['problem_user usa la contraseña de demostración que publica el sitio.'],
+    script: `import { test, expect } from '@playwright/test';
+
+test('ordenar por precio ascendente muestra primero el producto más barato', async ({ page }) => {
+  await test.step('Iniciar sesión con problem_user', async () => {
+    await page.goto('https://www.saucedemo.com');
+    await page.getByPlaceholder('Username').fill('problem_user');
+    await page.getByPlaceholder('Password').fill('secret_sauce');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page).toHaveURL(/inventory\\.html/);
+  });
+
+  await test.step('Ordenar por precio de menor a mayor', async () => {
+    await page.getByRole('combobox', { name: 'Sort products' }).selectOption('Price (low to high)');
+  });
+
+  await test.step('Verificar el precio del primer producto', async () => {
+    await expect(page.locator('[data-test="inventory-item-price"]').first()).toHaveText('$7.99');
+  });
+});
+`,
+  },
 };
+
+// El ejemplo al que pertenece un script de demo, si lo es.
+export const findDemoExample = (script: string): ExampleId | undefined =>
+  EXAMPLES.find((example) => DEMO_TESTS[example.id].script === script)?.id;
+
+export const demoTest = (id: ExampleId): GeneratedTest => ({
+  ...DEMO_TESTS[id],
+  warnings: [DEMO_WARNING],
+});
 
 const normalize = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -110,5 +174,5 @@ export const createDemoGenerator = (): TestGenerator => async (request) => {
     );
   }
 
-  return { status: 'ok', test: { ...DEMO_TESTS[example.id], warnings: [DEMO_WARNING] } };
+  return { status: 'ok', test: demoTest(example.id) };
 };

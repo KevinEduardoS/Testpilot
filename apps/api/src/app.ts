@@ -7,6 +7,8 @@ import {
   generateTestRequestSchema,
   generateTestResponseSchema,
   healthStatusSchema,
+  repairTestRequestSchema,
+  repairTestResponseSchema,
   runnerPingSchema,
   type AiProvider,
   type ApiError,
@@ -18,8 +20,21 @@ import { ZodError } from 'zod';
 import { HttpError } from './errors.js';
 import type { TestExecutor } from './runner-client.js';
 import type { TestGenerator } from './test-generator.js';
+import type { TestRepairer } from './test-repairer.js';
 
 const RUNNER_PING_TIMEOUT_MS = 3000;
+
+const assertSafeScript = (script: string) => {
+  const policy = checkScriptPolicy(script);
+  if (!policy.ok) {
+    throw new HttpError(
+      422,
+      'unsafe_script',
+      'El script no cumple la política de seguridad.',
+      policy.violations,
+    );
+  }
+};
 
 export type AppOptions = {
   webOrigin: string;
@@ -28,6 +43,7 @@ export type AppOptions = {
   rateLimitPerHour: number;
   aiProvider: AiProvider;
   generateTest: TestGenerator;
+  repairTest: TestRepairer;
   executeTest: TestExecutor;
   logger?: FastifyServerOptions['logger'];
 };
@@ -108,20 +124,23 @@ export const buildApp = async (options: AppOptions) => {
   );
 
   app.post(
+    '/api/tests/repair',
+    { config: { rateLimit: { max: options.rateLimitPerHour, timeWindow: '1 hour' } } },
+    async (request) => {
+      const input = repairTestRequestSchema.parse(request.body);
+      // El script que se pide reparar llega del cliente: se valida como cualquier otro.
+      assertSafeScript(input.script);
+      return repairTestResponseSchema.parse(await options.repairTest(input, request.log));
+    },
+  );
+
+  app.post(
     '/api/tests/execute',
     { config: { rateLimit: { max: options.rateLimitPerHour, timeWindow: '1 hour' } } },
     async (request, reply) => {
       const { script } = executeTestRequestSchema.parse(request.body);
       // El cliente puede enviar cualquier script: se valida aquí y otra vez en el runner.
-      const policy = checkScriptPolicy(script);
-      if (!policy.ok) {
-        throw new HttpError(
-          422,
-          'unsafe_script',
-          'El script no cumple la política de seguridad.',
-          policy.violations,
-        );
-      }
+      assertSafeScript(script);
 
       const abort = new AbortController();
       // Los errores previos a la ejecución se lanzan aquí y responden con su estado HTTP.

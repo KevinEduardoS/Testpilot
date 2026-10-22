@@ -186,3 +186,23 @@ export const checkScriptPolicy = (script: string): ScriptPolicyResult => {
 
   return violations.size === 0 ? { ok: true } : { ok: false, violations: [...violations] };
 };
+
+// Cuenta las llamadas a expect(), expect.soft() y expect.poll(). Permite comprobar que una
+// reparación no quita aserciones para que la prueba pase.
+export const countAssertions = (script: string): number => {
+  const sourceFile = ts.createSourceFile('generated.spec.ts', script, ts.ScriptTarget.ES2022, true);
+  let count = 0;
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      (isCallTo(node, 'expect') ||
+        isCallTo(node, 'expect', 'soft') ||
+        isCallTo(node, 'expect', 'poll'))
+    ) {
+      count += 1;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return count;
+};

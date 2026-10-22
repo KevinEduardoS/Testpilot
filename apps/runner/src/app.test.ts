@@ -11,6 +11,7 @@ const passed: ExecutionResult = {
   steps: [{ title: 'paso', status: 'passed', durationMs: 5, error: null }],
   error: null,
   screenshot: null,
+  pageSnapshot: null,
 };
 
 const validScript = `import { test, expect } from '@playwright/test';

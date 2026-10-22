@@ -8,6 +8,7 @@ const passed: ExecutionResult = {
   steps: [],
   error: null,
   screenshot: null,
+  pageSnapshot: null,
 };
 
 // Simula la red: el texto llega troceado en fragmentos arbitrarios.

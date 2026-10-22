@@ -31,7 +31,7 @@ beforeAll(async () => {
   // Dentro del paquete para que los scripts resuelvan @playwright/test, igual que en producción.
   const packageDir = fileURLToPath(new URL('..', import.meta.url));
   runsDir = await mkdtemp(join(packageDir, '.runs-test-'));
-  executor = createExecutor({ runsDir, timeoutMs: 10_000 });
+  executor = createExecutor({ runsDir, timeoutMs: 10_000, snapshotMaxChars: 2000 });
 });
 
 afterAll(async () => {
@@ -58,6 +58,7 @@ describe('createExecutor', () => {
         { title: 'verificar el botón', status: 'passed' },
       ]);
       expect(result.screenshot).toMatch(/^data:image\/png;base64,/);
+      expect(result.pageSnapshot).toBeNull();
       expect(await readdir(runsDir)).toEqual([]);
     },
     BROWSER_TEST_TIMEOUT_MS,
@@ -82,6 +83,26 @@ describe('createExecutor', () => {
       expect(result.error).not.toContain('\u001b');
       expect(result.error).not.toContain('Call log');
       expect(result.screenshot).not.toBeNull();
+      expect(result.pageSnapshot).toContain('button "Enviar"');
+    },
+    BROWSER_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'recorta el snapshot de la página al límite configurado',
+    async () => {
+      const buttons = Array.from({ length: 300 }, (_, index) => `<button>Botón ${index}</button>`);
+      const result = await execute(
+        page(
+          buttons.join(''),
+          `  await test.step('fallar', async () => {
+    await expect(page.getByText('no existe')).toBeVisible({ timeout: 500 });
+  });`,
+        ),
+      );
+
+      expect(result.pageSnapshot?.length).toBeLessThanOrEqual(2000);
+      expect(result.pageSnapshot).toMatch(/snapshot truncado\)$/);
     },
     BROWSER_TEST_TIMEOUT_MS,
   );

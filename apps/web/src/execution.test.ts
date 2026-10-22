@@ -8,6 +8,7 @@ const passed: ExecutionResult = {
   steps: [],
   error: null,
   screenshot: null,
+  pageSnapshot: null,
 };
 
 const apply = (events: ExecutionEvent[], initial: ExecutionState = startExecution(0)) =>

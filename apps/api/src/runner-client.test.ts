@@ -13,6 +13,7 @@ const passed: ExecutionResult = {
   steps: [{ title: 'paso', status: 'passed', durationMs: 5, error: null }],
   error: null,
   screenshot: null,
+  pageSnapshot: null,
 };
 
 const ndjson = (events: unknown[]) => events.map((event) => `${JSON.stringify(event)}\n`).join('');

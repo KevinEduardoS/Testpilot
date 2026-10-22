@@ -12,6 +12,9 @@ import { z } from 'zod';
 // Margen para que Playwright cierre el navegador y escriba el reporte tras el timeout del test.
 const PROCESS_GRACE_MS = 15_000;
 const STDERR_TAIL_CHARS = 2000;
+const SNAPSHOT_ATTACHMENT = 'testpilot-page-snapshot';
+const SNAPSHOT_TIMEOUT_MS = 5000;
+const TRUNCATION_MARKER = '\n… (snapshot truncado)';
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 
 // Solo lo imprescindible para que Node y el navegador funcionen: el script generado nunca
@@ -64,7 +67,14 @@ const reportResultSchema = z.object({
     )
     .default([]),
   attachments: z
-    .array(z.object({ name: z.string(), contentType: z.string(), path: z.string().optional() }))
+    .array(
+      z.object({
+        name: z.string(),
+        contentType: z.string(),
+        path: z.string().optional(),
+        body: z.string().optional(),
+      }),
+    )
     .default([]),
 });
 
@@ -109,6 +119,28 @@ const toStep = (step: ReportStep): StepResult => ({
   durationMs: step.duration,
   error: cleanErrorMessage(step.error?.message),
 });
+
+// Se añade al final del script ya validado. Si la prueba no pasa, adjunta el árbol de
+// accesibilidad de la página para diagnosticar el fallo; si no se puede capturar, se ignora
+// para no alterar el resultado.
+const SNAPSHOT_HOOK = `
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) {
+    return;
+  }
+  try {
+    const snapshot = await page.locator('body').ariaSnapshot({ timeout: ${SNAPSHOT_TIMEOUT_MS} });
+    await testInfo.attach('${SNAPSHOT_ATTACHMENT}', { body: snapshot, contentType: 'text/plain' });
+  } catch {
+    // Sin snapshot: el diagnóstico se hará solo con el error.
+  }
+});
+`;
+
+const truncate = (text: string, maxChars: number): string =>
+  text.length <= maxChars
+    ? text
+    : text.slice(0, maxChars - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
 
 const buildConfig = (timeoutMs: number): string =>
   `export default ${JSON.stringify(
@@ -236,7 +268,7 @@ const readScreenshot = async (path: string | undefined): Promise<string | null> 
   return `data:image/png;base64,${data.toString('base64')}`;
 };
 
-export type ExecutorOptions = { runsDir: string; timeoutMs: number };
+export type ExecutorOptions = { runsDir: string; timeoutMs: number; snapshotMaxChars: number };
 
 export type RunScriptOptions = {
   onProgress?: (event: ExecutionProgress) => void;
@@ -249,7 +281,11 @@ export type Executor = {
   run: (script: string, options?: RunScriptOptions) => Promise<ExecutionResult>;
 };
 
-export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executor => {
+export const createExecutor = ({
+  runsDir,
+  timeoutMs,
+  snapshotMaxChars,
+}: ExecutorOptions): Executor => {
   let running = false;
 
   const run = async (
@@ -265,7 +301,7 @@ export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executo
 
     try {
       await mkdir(runDir, { recursive: true });
-      await writeFile(join(runDir, 'generated.spec.ts'), script);
+      await writeFile(join(runDir, 'generated.spec.ts'), `${script}\n${SNAPSHOT_HOOK}`);
       await writeFile(join(runDir, 'playwright.config.mjs'), buildConfig(timeoutMs));
 
       const stderr = await runPlaywright({
@@ -298,6 +334,7 @@ export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executo
             cleanErrorMessage(report.errors.map((error) => error.message ?? '').join('\n')) ??
             'El script no definió ninguna prueba.',
           screenshot: null,
+          pageSnapshot: null,
         };
       }
 
@@ -305,6 +342,10 @@ export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executo
       const screenshot = result.attachments.find(
         (attachment) => attachment.name === 'screenshot' && attachment.contentType === 'image/png',
       );
+      // El último: el hook corre después del cuerpo de la prueba, que podría adjuntar uno falso.
+      const snapshot = result.attachments
+        .filter((attachment) => attachment.name === SNAPSHOT_ATTACHMENT)
+        .at(-1)?.body;
 
       return {
         status: result.status === 'skipped' ? 'interrupted' : result.status,
@@ -312,6 +353,10 @@ export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executo
         steps: result.steps.map(toStep),
         error: cleanErrorMessage(result.error?.message),
         screenshot: await readScreenshot(screenshot?.path),
+        pageSnapshot:
+          snapshot === undefined
+            ? null
+            : truncate(Buffer.from(snapshot, 'base64').toString('utf8'), snapshotMaxChars),
       };
     } finally {
       try {

@@ -21,6 +21,7 @@ const passed: ExecutionResult = {
   steps: [],
   error: null,
   screenshot: null,
+  pageSnapshot: null,
 };
 
 const validScript = `import { test, expect } from '@playwright/test';

@@ -18,6 +18,7 @@ export type RunnerPing = z.infer<typeof runnerPingSchema>;
 export const MAX_INSTRUCTION_LENGTH = 1000;
 export const MAX_SCRIPT_LENGTH = 20_000;
 export const MAX_PREVIOUS_INSTRUCTIONS = 10;
+export const MAX_PAGE_SNAPSHOT_LENGTH = 40_000;
 
 // Conversación previa para refinar una prueba: el modelo recibe el script vigente y las
 // instrucciones anteriores, y devuelve una versión nueva del script.
@@ -87,6 +88,9 @@ export const executionResultSchema = z.object({
   error: z.string().nullable(),
   // Captura PNG del estado final de la página como data URL.
   screenshot: z.string().nullable(),
+  // Árbol de accesibilidad (ARIA snapshot) de la página cuando la prueba no pasa. Es contenido
+  // de la página, así que la IA lo recibe como datos.
+  pageSnapshot: z.string().max(MAX_PAGE_SNAPSHOT_LENGTH).nullable(),
 });
 
 export type ExecutionResult = z.infer<typeof executionResultSchema>;

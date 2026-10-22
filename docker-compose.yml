@@ -67,6 +67,7 @@ services:
       NODE_ENV: development
       RUNNER_PORT: 3002
       RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-60000}
+      SNAPSHOT_MAX_CHARS: ${SNAPSHOT_MAX_CHARS:-40000}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Define INTERNAL_API_KEY en .env}
     expose:
       - '3002'

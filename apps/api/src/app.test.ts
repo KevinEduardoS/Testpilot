@@ -1,7 +1,8 @@
-import type { GenerateTestResponse } from '@testpilot/shared';
+import type { ExecutionResult, GenerateTestResponse } from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
 import { HttpError } from './errors.js';
+import type { TestExecutor } from './runner-client.js';
 import type { TestGenerator } from './test-generator.js';
 
 const okResponse: GenerateTestResponse = {
@@ -9,7 +10,27 @@ const okResponse: GenerateTestResponse = {
   test: { title: 't', steps: ['s'], script: 'script', assumptions: [], warnings: [] },
 };
 
-const setup = async (generateTest: TestGenerator = async () => okResponse, rateLimitPerHour = 10) =>
+const passed: ExecutionResult = {
+  status: 'passed',
+  durationMs: 10,
+  steps: [],
+  error: null,
+  screenshot: null,
+};
+
+const validScript = `import { test, expect } from '@playwright/test';
+test('x', async ({ page }) => {
+  await test.step('paso', async () => {
+    await expect(page).toHaveURL(/about/);
+  });
+});
+`;
+
+const setup = async (
+  generateTest: TestGenerator = async () => okResponse,
+  rateLimitPerHour = 10,
+  executeTest: TestExecutor = async () => passed,
+) =>
   buildApp({
     webOrigin: 'http://localhost:5173',
     // Puerto 9 (discard): nada escucha ahí, así que el runner aparece caído.
@@ -17,6 +38,7 @@ const setup = async (generateTest: TestGenerator = async () => okResponse, rateL
     internalApiKey: 'k'.repeat(32),
     rateLimitPerHour,
     generateTest,
+    executeTest,
     logger: false,
   });
 
@@ -82,6 +104,44 @@ describe('POST /api/tests/generate', () => {
       headers: { origin: 'http://localhost:5173', 'access-control-request-method': 'POST' },
     });
     expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+  });
+});
+
+describe('POST /api/tests/execute', () => {
+  const execute = (app: Awaited<ReturnType<typeof setup>>, payload: unknown) =>
+    app.inject({ method: 'POST', url: '/api/tests/execute', payload: payload as object });
+
+  it('envía al runner un script válido', async () => {
+    const scripts: string[] = [];
+    const app = await setup(undefined, 10, async (script) => {
+      scripts.push(script);
+      return passed;
+    });
+    const response = await execute(app, { script: validScript });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(passed);
+    expect(scripts).toEqual([validScript]);
+  });
+
+  it('rechaza con 422 un script inseguro sin llamar al runner', async () => {
+    let called = false;
+    const app = await setup(undefined, 10, async () => {
+      called = true;
+      return passed;
+    });
+    const response = await execute(app, { script: validScript.replace('await expect', "eval('x'); await expect") });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ error: 'unsafe_script' });
+    expect(called).toBe(false);
+  });
+
+  it('propaga los errores del runner', async () => {
+    const app = await setup(undefined, 10, async () => {
+      throw new HttpError(503, 'runner_busy', 'ocupado');
+    });
+    const response = await execute(app, { script: validScript });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ error: 'runner_busy', message: 'ocupado' });
   });
 });
 

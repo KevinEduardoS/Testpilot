@@ -44,6 +44,7 @@ services:
       AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-120000}
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-10}
+      RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-60000}
     ports:
       - '3001:3001'
     healthcheck:
@@ -64,6 +65,7 @@ services:
     environment:
       NODE_ENV: development
       RUNNER_PORT: 3002
+      RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-60000}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Define INTERNAL_API_KEY en .env}
     expose:
       - '3002'

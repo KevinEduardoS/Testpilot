@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { buildApp } from './app.js';
 import { env } from './config.js';
 import { loadPrompt } from './prompt-loader.js';
+import { createRunnerClient } from './runner-client.js';
 import { createTestGenerator } from './test-generator.js';
 
 const client = new Anthropic({
@@ -21,6 +22,11 @@ const app = await buildApp({
     model: env.ANTHROPIC_MODEL,
     effort: env.AI_EFFORT,
     maxTokens: env.AI_MAX_TOKENS,
+  }),
+  executeTest: createRunnerClient({
+    runnerUrl: env.RUNNER_URL,
+    internalApiKey: env.INTERNAL_API_KEY,
+    runTimeoutMs: env.RUN_TIMEOUT_MS,
   }),
 });
 

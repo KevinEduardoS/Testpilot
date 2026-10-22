@@ -1,6 +1,8 @@
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import {
+  executeTestRequestSchema,
+  executionResultSchema,
   generateTestRequestSchema,
   generateTestResponseSchema,
   healthStatusSchema,
@@ -8,9 +10,11 @@ import {
   type ApiError,
   type RunnerPing,
 } from '@testpilot/shared';
+import { checkScriptPolicy } from '@testpilot/shared/script-policy';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import { ZodError } from 'zod';
 import { HttpError } from './errors.js';
+import type { TestExecutor } from './runner-client.js';
 import type { TestGenerator } from './test-generator.js';
 
 const RUNNER_PING_TIMEOUT_MS = 3000;
@@ -21,6 +25,7 @@ export type AppOptions = {
   internalApiKey: string;
   rateLimitPerHour: number;
   generateTest: TestGenerator;
+  executeTest: TestExecutor;
   logger?: FastifyServerOptions['logger'];
 };
 
@@ -91,6 +96,25 @@ export const buildApp = async (options: AppOptions) => {
     async (request) => {
       const input = generateTestRequestSchema.parse(request.body);
       return generateTestResponseSchema.parse(await options.generateTest(input, request.log));
+    },
+  );
+
+  app.post(
+    '/api/tests/execute',
+    { config: { rateLimit: { max: options.rateLimitPerHour, timeWindow: '1 hour' } } },
+    async (request) => {
+      const { script } = executeTestRequestSchema.parse(request.body);
+      // El cliente puede enviar cualquier script: se valida aquí y otra vez en el runner.
+      const policy = checkScriptPolicy(script);
+      if (!policy.ok) {
+        throw new HttpError(
+          422,
+          'unsafe_script',
+          'El script no cumple la política de seguridad.',
+          policy.violations,
+        );
+      }
+      return executionResultSchema.parse(await options.executeTest(script));
     },
   );
 

@@ -56,6 +56,7 @@ type SetupOptions = {
   repairTest?: TestRepairer;
   executeTest?: TestExecutor;
   rateLimitPerHour?: number;
+  trustProxy?: number;
 };
 
 const setup = async ({
@@ -63,6 +64,7 @@ const setup = async ({
   repairTest = async () => fixedResponse,
   executeTest = async () => toEvents([{ type: 'result', result: passed }]),
   rateLimitPerHour = 10,
+  trustProxy = 0,
 }: SetupOptions = {}) =>
   buildApp({
     webOrigin: 'http://localhost:5173',
@@ -70,6 +72,7 @@ const setup = async ({
     runnerUrl: 'http://127.0.0.1:9',
     internalApiKey: 'k'.repeat(32),
     rateLimitPerHour,
+    trustProxy,
     aiProvider: 'demo',
     allowedDomains: ['saucedemo.com'],
     generateTest,
@@ -162,6 +165,24 @@ describe('POST /api/tests/generate', () => {
       statuses.push((await generate(app, { instruction: 'probar' })).statusCode);
     }
     expect(statuses).toEqual([200, 200, 429]);
+  });
+
+  it.each([
+    ['cuenta a cada visitante por separado detrás de un proxy de confianza', 1, [200, 200]],
+    ['ignora X-Forwarded-For sin proxies de confianza', 0, [200, 429]],
+  ])('%s', async (_name, trustProxy, expected) => {
+    const app = await setup({ rateLimitPerHour: 1, trustProxy });
+    const statuses = [];
+    for (const visitor of ['203.0.113.1', '203.0.113.2']) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/tests/generate',
+        payload: { instruction: 'probar' },
+        headers: { 'x-forwarded-for': visitor },
+      });
+      statuses.push(response.statusCode);
+    }
+    expect(statuses).toEqual(expected);
   });
 
   it('solo autoriza CORS para el origen de la web', async () => {

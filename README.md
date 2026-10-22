@@ -68,7 +68,7 @@ La imagen del runner ya incluye los navegadores. Los contenedores solo montan la
 | `GET` | `/api/ping` | Estado del runner visto desde la API |
 | `GET` | `/health` | Estado de la API |
 
-Los `POST` tienen un límite por IP configurable con `RATE_LIMIT_PER_HOUR`.
+Los `POST` tienen un límite por IP configurable con `RATE_LIMIT_PER_HOUR`, contado por separado en cada ruta. Detrás de un proxy (el de la plataforma de despliegue), `TRUST_PROXY` debe indicar cuántos hay para que la IP sea la del visitante: con `0` se ignora `X-Forwarded-For`, que de otro modo cualquiera podría falsear.
 
 ## Variables de entorno
 Todos los servicios leen el `.env` de la raíz, pero cada uno toma solo las variables que necesita. La web solo recibe las que empiezan por `VITE_`.

@@ -43,6 +43,8 @@ export type AppOptions = {
   runnerUrl: string;
   internalApiKey: string;
   rateLimitPerHour: number;
+  // Número de proxies de confianza; 0 usa la IP de la conexión.
+  trustProxy: number;
   aiProvider: AiProvider;
   allowedDomains: AllowedDomains;
   generateTest: TestGenerator;
@@ -52,7 +54,10 @@ export type AppOptions = {
 };
 
 export const buildApp = async (options: AppOptions) => {
-  const app = Fastify({ logger: options.logger ?? true });
+  const app = Fastify({
+    logger: options.logger ?? true,
+    trustProxy: options.trustProxy === 0 ? false : options.trustProxy,
+  });
 
   await app.register(cors, { origin: options.webOrigin });
   await app.register(rateLimit, { global: false });

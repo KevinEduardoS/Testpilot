@@ -34,6 +34,10 @@ const baseSchema = z.object({
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
   INTERNAL_API_KEY: z.string().min(32, 'debe tener al menos 32 caracteres'),
   RATE_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
+  // Proxies de confianza delante de la API (por ejemplo, el de la plataforma de despliegue).
+  // Con 0 se ignora X-Forwarded-For; sin el valor correcto, los límites por visitante se
+  // aplicarían a la IP del proxy o se podrían falsear con la cabecera.
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
   RUN_TIMEOUT_MS: z.coerce.number().int().positive().max(300_000).default(60_000),
   ALLOWED_DOMAINS: z.string().default('saucedemo.com').pipe(allowedDomainsSchema),
 });

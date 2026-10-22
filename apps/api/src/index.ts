@@ -44,6 +44,7 @@ const app = await buildApp({
   runnerUrl: env.RUNNER_URL,
   internalApiKey: env.INTERNAL_API_KEY,
   rateLimitPerHour: env.RATE_LIMIT_PER_HOUR,
+  trustProxy: env.TRUST_PROXY,
   aiProvider: env.AI_PROVIDER,
   allowedDomains: env.ALLOWED_DOMAINS,
   ...createAiServices(),

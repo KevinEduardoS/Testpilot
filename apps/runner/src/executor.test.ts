@@ -1,5 +1,4 @@
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -73,7 +72,8 @@ describe('createExecutor', () => {
       expect(result.status).toBe('failed');
       expect(result.steps.map((step) => step.status)).toEqual(['passed', 'failed']);
       expect(result.steps[1]?.error).toContain('toBeVisible');
-      expect(result.error).not.toMatch(/\u001b|Call log/);
+      expect(result.error).not.toContain('\u001b');
+      expect(result.error).not.toContain('Call log');
       expect(result.screenshot).not.toBeNull();
     },
     BROWSER_TEST_TIMEOUT_MS,

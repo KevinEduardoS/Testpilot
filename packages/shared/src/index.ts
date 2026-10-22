@@ -15,9 +15,26 @@ export const runnerPingSchema = z.object({
 
 export type RunnerPing = z.infer<typeof runnerPingSchema>;
 
+export const MAX_INSTRUCTION_LENGTH = 1000;
+export const MAX_SCRIPT_LENGTH = 20_000;
+export const MAX_PREVIOUS_INSTRUCTIONS = 10;
+
+// Conversación previa para refinar una prueba: el modelo recibe el script vigente y las
+// instrucciones anteriores, y devuelve una versión nueva del script.
+export const conversationContextSchema = z.object({
+  previousInstructions: z
+    .array(z.string().max(MAX_INSTRUCTION_LENGTH))
+    .min(1)
+    .max(MAX_PREVIOUS_INSTRUCTIONS),
+  currentScript: z.string().min(1).max(MAX_SCRIPT_LENGTH),
+});
+
+export type ConversationContext = z.infer<typeof conversationContextSchema>;
+
 export const generateTestRequestSchema = z.object({
-  instruction: z.string().trim().min(1).max(1000),
+  instruction: z.string().trim().min(1).max(MAX_INSTRUCTION_LENGTH),
   baseUrl: z.url({ protocol: /^https?$/ }).optional(),
+  context: conversationContextSchema.optional(),
 });
 
 export type GenerateTestRequest = z.infer<typeof generateTestRequestSchema>;
@@ -48,8 +65,6 @@ export const apiErrorSchema = z.object({
 
 export type ApiError = z.infer<typeof apiErrorSchema>;
 
-export const MAX_SCRIPT_LENGTH = 20_000;
-
 export const executeTestRequestSchema = z.object({
   script: z.string().min(1).max(MAX_SCRIPT_LENGTH),
 });
@@ -75,6 +90,16 @@ export const executionResultSchema = z.object({
 });
 
 export type ExecutionResult = z.infer<typeof executionResultSchema>;
+
+// Eventos de una ejecución en streaming (NDJSON). Termina siempre con "result" o "error".
+export const executionEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('step-begin'), index: z.number().int().min(0), title: z.string() }),
+  z.object({ type: z.literal('step-end'), index: z.number().int().min(0), step: stepResultSchema }),
+  z.object({ type: z.literal('result'), result: executionResultSchema }),
+  z.object({ type: z.literal('error'), error: apiErrorSchema }),
+]);
+
+export type ExecutionEvent = z.infer<typeof executionEventSchema>;
 
 export const aiProviderSchema = z.enum(['anthropic', 'demo']);
 

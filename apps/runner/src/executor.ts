@@ -1,8 +1,11 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
+import type { Readable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
 import type { ExecutionResult, StepResult } from '@testpilot/shared';
 import { z } from 'zod';
 
@@ -25,6 +28,25 @@ const INHERITED_ENV = [
 ];
 
 const playwrightCli = createRequire(import.meta.url).resolve('@playwright/test/cli');
+// Relativo a este módulo: funciona igual desde src/ en desarrollo y desde dist/ en producción.
+const progressReporter = fileURLToPath(
+  new URL('../reporter/progress-reporter.mjs', import.meta.url),
+);
+
+const reporterEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('step-begin'), index: z.number().int().min(0), title: z.string() }),
+  z.object({
+    type: z.literal('step-end'),
+    index: z.number().int().min(0),
+    title: z.string(),
+    durationMs: z.number(),
+    error: z.string().nullable(),
+  }),
+]);
+
+export type ExecutionProgress =
+  | { type: 'step-begin'; index: number; title: string }
+  | { type: 'step-end'; index: number; step: StepResult };
 
 type ReportStep = { title: string; duration: number; error?: { message?: string } };
 
@@ -96,7 +118,7 @@ const buildConfig = (timeoutMs: number): string =>
       timeout: timeoutMs,
       retries: 0,
       workers: 1,
-      reporter: [['json', { outputFile: 'report.json' }]],
+      reporter: [['json', { outputFile: 'report.json' }], [progressReporter]],
       outputDir: 'artifacts',
       use: { headless: true, screenshot: 'on', trace: 'off', video: 'off' },
     },
@@ -104,7 +126,60 @@ const buildConfig = (timeoutMs: number): string =>
     2,
   )};\n`;
 
-const runPlaywright = (cwd: string, killAfterMs: number): Promise<string> =>
+// Las líneas mal formadas se ignoran: el progreso es informativo y el resultado final sale
+// del reporte JSON.
+const readProgress = (stream: Readable, onProgress: (event: ExecutionProgress) => void) => {
+  createInterface({ input: stream }).on('line', (line) => {
+    let json: unknown;
+    try {
+      json = JSON.parse(line);
+    } catch {
+      return;
+    }
+    const parsed = reporterEventSchema.safeParse(json);
+    if (!parsed.success) {
+      return;
+    }
+    const event = parsed.data;
+    onProgress(
+      event.type === 'step-begin'
+        ? event
+        : {
+            type: 'step-end',
+            index: event.index,
+            step: {
+              title: event.title,
+              status: event.error === null ? 'passed' : 'failed',
+              durationMs: event.durationMs,
+              error: cleanErrorMessage(event.error ?? undefined),
+            },
+          },
+    );
+  });
+};
+
+// Playwright lanza el navegador como proceso hijo: matar solo a Playwright dejaría Chromium
+// huérfano, con los archivos del directorio de la ejecución bloqueados.
+const killProcessTree = (child: ChildProcess) => {
+  if (child.pid === undefined || child.exitCode !== null) {
+    return;
+  }
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+  } else {
+    // Con detached el hijo encabeza su propio grupo; un pid negativo mata a todo el grupo.
+    process.kill(-child.pid, 'SIGKILL');
+  }
+};
+
+type RunOptions = {
+  cwd: string;
+  killAfterMs: number;
+  onProgress: (event: ExecutionProgress) => void;
+  signal?: AbortSignal;
+};
+
+const runPlaywright = ({ cwd, killAfterMs, onProgress, signal }: RunOptions): Promise<string> =>
   new Promise((resolve, reject) => {
     const env = Object.fromEntries(
       INHERITED_ENV.flatMap((name) => {
@@ -112,25 +187,43 @@ const runPlaywright = (cwd: string, killAfterMs: number): Promise<string> =>
         return value === undefined ? [] : [[name, value]];
       }),
     );
-    const child = spawn(process.execPath, [playwrightCli, 'test', '--config', 'playwright.config.mjs'], {
-      cwd,
-      env,
-      stdio: ['ignore', 'ignore', 'pipe'],
-    });
+    const child = spawn(
+      process.execPath,
+      [playwrightCli, 'test', '--config', 'playwright.config.mjs'],
+      {
+        cwd,
+        env,
+        detached: process.platform !== 'win32',
+        // El descriptor 3 es el canal exclusivo del reporter de progreso.
+        stdio: ['ignore', 'ignore', 'pipe', 'pipe'],
+      },
+    );
+
+    const progressStream = child.stdio[3];
+    if (progressStream && 'on' in progressStream) {
+      readProgress(progressStream as Readable, onProgress);
+    }
 
     let stderr = '';
-    child.stderr.on('data', (chunk: Buffer) => {
+    child.stderr?.on('data', (chunk: Buffer) => {
       stderr = (stderr + chunk.toString()).slice(-STDERR_TAIL_CHARS);
     });
 
-    const timer = setTimeout(() => child.kill('SIGKILL'), killAfterMs);
-    child.on('error', (error) => {
+    const kill = () => killProcessTree(child);
+    const timer = setTimeout(kill, killAfterMs);
+    signal?.addEventListener('abort', kill, { once: true });
+    const cleanup = () => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', kill);
+    };
+
+    child.on('error', (error) => {
+      cleanup();
       reject(error);
     });
     // Playwright sale con código 1 cuando una prueba falla; el resultado se lee del reporte.
     child.on('close', () => {
-      clearTimeout(timer);
+      cleanup();
       resolve(stderr);
     });
   });
@@ -144,12 +237,25 @@ const readScreenshot = async (path: string | undefined): Promise<string | null> 
 };
 
 export type ExecutorOptions = { runsDir: string; timeoutMs: number };
-export type Executor = (script: string) => Promise<ExecutionResult>;
+
+export type RunScriptOptions = {
+  onProgress?: (event: ExecutionProgress) => void;
+  // Al abortar se mata el proceso de Playwright, por ejemplo si el cliente se desconecta.
+  signal?: AbortSignal;
+};
+
+export type Executor = {
+  isBusy: () => boolean;
+  run: (script: string, options?: RunScriptOptions) => Promise<ExecutionResult>;
+};
 
 export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executor => {
   let running = false;
 
-  return async (script) => {
+  const run = async (
+    script: string,
+    { onProgress, signal }: RunScriptOptions = {},
+  ): Promise<ExecutionResult> => {
     // Una ejecución a la vez: cada una lanza un navegador completo.
     if (running) {
       throw new ExecutionError('runner_busy', 'El runner está ejecutando otra prueba.');
@@ -162,7 +268,12 @@ export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executo
       await writeFile(join(runDir, 'generated.spec.ts'), script);
       await writeFile(join(runDir, 'playwright.config.mjs'), buildConfig(timeoutMs));
 
-      const stderr = await runPlaywright(runDir, timeoutMs + PROCESS_GRACE_MS);
+      const stderr = await runPlaywright({
+        cwd: runDir,
+        killAfterMs: timeoutMs + PROCESS_GRACE_MS,
+        onProgress: onProgress ?? (() => undefined),
+        signal,
+      });
 
       let rawReport: string;
       try {
@@ -203,8 +314,17 @@ export const createExecutor = ({ runsDir, timeoutMs }: ExecutorOptions): Executo
         screenshot: await readScreenshot(screenshot?.path),
       };
     } finally {
-      await rm(runDir, { recursive: true, force: true });
-      running = false;
+      try {
+        // Windows puede tardar en liberar los archivos tras matar el navegador.
+        await rm(runDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      } catch {
+        // Un directorio que no se pudo borrar no debe ocultar el resultado ni bloquear el runner;
+        // queda en .runs, que está fuera del control de versiones.
+      } finally {
+        running = false;
+      }
     }
   };
+
+  return { isBusy: () => running, run };
 };

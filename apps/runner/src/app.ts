@@ -1,9 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
+import { PassThrough } from 'node:stream';
 import {
   executeTestRequestSchema,
   executionResultSchema,
   healthStatusSchema,
   type ApiError,
+  type ExecutionEvent,
 } from '@testpilot/shared';
 import { checkScriptPolicy } from '@testpilot/shared/script-policy';
 import Fastify, { type FastifyServerOptions } from 'fastify';
@@ -12,7 +14,7 @@ import { ExecutionError, type Executor } from './executor.js';
 
 export type AppOptions = {
   internalApiKey: string;
-  execute: Executor;
+  executor: Executor;
   logger?: FastifyServerOptions['logger'];
 };
 
@@ -84,7 +86,35 @@ export const buildApp = (options: AppOptions) => {
       return reply.code(422).send(body);
     }
 
-    return executionResultSchema.parse(await options.execute(script));
+    // Se comprueba antes de abrir el stream para poder responder 503 con un estado HTTP normal.
+    if (options.executor.isBusy()) {
+      throw new ExecutionError('runner_busy', 'El runner está ejecutando otra prueba.');
+    }
+
+    const stream = new PassThrough();
+    const send = (event: ExecutionEvent) => stream.write(`${JSON.stringify(event)}\n`);
+    const abort = new AbortController();
+    // Si el cliente se va antes de terminar, se mata el navegador en lugar de seguir ejecutando.
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableFinished) {
+        abort.abort();
+      }
+    });
+
+    options.executor
+      .run(script, { onProgress: send, signal: abort.signal })
+      .then((result) => send({ type: 'result', result: executionResultSchema.parse(result) }))
+      .catch((error: unknown) => {
+        request.log.error({ err: error }, 'execution failed');
+        const apiError: ApiError =
+          error instanceof ExecutionError
+            ? { error: error.code, message: error.message }
+            : { error: 'internal_error', message: 'Error interno del runner.' };
+        send({ type: 'error', error: apiError });
+      })
+      .finally(() => stream.end());
+
+    return reply.type('application/x-ndjson').send(stream);
   });
 
   return app;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { checkScriptPolicy, MAX_SCRIPT_LENGTH } from './script-policy.js';
+import { MAX_SCRIPT_LENGTH } from './index.js';
+import { checkScriptPolicy } from './script-policy.js';
 
 const validScript = `import { test, expect } from '@playwright/test';
 

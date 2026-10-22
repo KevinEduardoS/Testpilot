@@ -1,9 +1,8 @@
 import ts from 'typescript';
+import { MAX_SCRIPT_LENGTH } from './index.js';
 
 // Política de seguridad para scripts Playwright generados por IA. Se analiza el AST en lugar
 // de buscar texto para que no se pueda evadir con espacios, comentarios o concatenaciones.
-
-export const MAX_SCRIPT_LENGTH = 20_000;
 
 const ALLOWED_MODULE = '@playwright/test';
 const ALLOWED_IMPORTS = new Set(['test', 'expect']);

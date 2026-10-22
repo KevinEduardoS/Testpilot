@@ -1,84 +1,19 @@
-import { timingSafeEqual } from 'node:crypto';
-import Fastify from 'fastify';
-import { healthStatusSchema } from '@testpilot/shared';
+import { fileURLToPath } from 'node:url';
+import { buildApp } from './app.js';
 import { env } from './config.js';
+import { createExecutor } from './executor.js';
 
-const app = Fastify({ logger: true });
-const expectedKey = Buffer.from(env.INTERNAL_API_KEY);
+// Dentro del paquete del runner para que el script generado resuelva @playwright/test.
+const runsDir = fileURLToPath(new URL('../.runs/', import.meta.url));
 
-const isValidInternalKey = (providedKey: string | string[] | undefined): boolean => {
-  if (typeof providedKey !== 'string') {
-    return false;
-  }
-
-  const provided = Buffer.from(providedKey);
-  return provided.length === expectedKey.length && timingSafeEqual(provided, expectedKey);
-};
-
-app.addHook('onRequest', async (request, reply) => {
-  if (request.routeOptions.url === '/health') {
-    return;
-  }
-
-  if (!isValidInternalKey(request.headers['x-internal-api-key'])) {
-    return reply.code(401).send({
-      error: 'Unauthorized',
-      message: 'Missing or invalid INTERNAL_API_KEY',
-    });
-  }
+const app = buildApp({
+  internalApiKey: env.INTERNAL_API_KEY,
+  execute: createExecutor({ runsDir, timeoutMs: env.RUN_TIMEOUT_MS }),
 });
 
-app.get('/health', async () => {
-  const payload = {
-    status: 'ok',
-    service: 'runner',
-    timestamp: new Date().toISOString(),
-  };
-
-  return healthStatusSchema.parse(payload);
-});
-
-app.post('/snapshot', async (_request, reply) => {
-  const body = {
-    status: 'ok',
-    service: 'runner',
-    ariaSnapshot: 'url=https://example.com\n[page]\n  [link "Example Domain"]\n',
-    timestamp: new Date().toISOString(),
-  };
-
-  reply.code(200);
-  return body;
-});
-
-app.post('/execute', async (_request, reply) => {
-  const body = {
-    ok: true,
-    durationMs: 1250,
-    steps: [
-      {
-        name: 'núcleo de la ejecución',
-        status: 'passed',
-        durationMs: 1200,
-      },
-    ],
-    screenshots: [],
-    video: null,
-    error: null,
-    snapshot: null,
-    timestamp: new Date().toISOString(),
-  };
-
-  reply.code(200);
-  return body;
-});
-
-const start = async () => {
-  try {
-    await app.listen({ port: env.RUNNER_PORT, host: '0.0.0.0' });
-  } catch (error) {
-    app.log.error(error);
-    process.exit(1);
-  }
-};
-
-void start();
+try {
+  await app.listen({ port: env.RUNNER_PORT, host: '0.0.0.0' });
+} catch (error) {
+  app.log.error(error);
+  process.exit(1);
+}

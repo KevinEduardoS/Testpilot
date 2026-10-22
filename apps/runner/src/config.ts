@@ -21,6 +21,7 @@ const readRootEnvFile = (): Record<string, string | undefined> => {
 
 const envSchema = z.object({
   RUNNER_PORT: z.coerce.number().int().positive().default(3002),
+  RUN_TIMEOUT_MS: z.coerce.number().int().positive().max(300_000).default(60_000),
   INTERNAL_API_KEY: z.string().min(32, 'debe tener al menos 32 caracteres'),
 });
 

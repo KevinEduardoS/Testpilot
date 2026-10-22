@@ -47,3 +47,31 @@ export const apiErrorSchema = z.object({
 });
 
 export type ApiError = z.infer<typeof apiErrorSchema>;
+
+export const MAX_SCRIPT_LENGTH = 20_000;
+
+export const executeTestRequestSchema = z.object({
+  script: z.string().min(1).max(MAX_SCRIPT_LENGTH),
+});
+
+export type ExecuteTestRequest = z.infer<typeof executeTestRequestSchema>;
+
+export const stepResultSchema = z.object({
+  title: z.string(),
+  status: z.enum(['passed', 'failed']),
+  durationMs: z.number(),
+  error: z.string().nullable(),
+});
+
+export type StepResult = z.infer<typeof stepResultSchema>;
+
+export const executionResultSchema = z.object({
+  status: z.enum(['passed', 'failed', 'timedOut', 'interrupted']),
+  durationMs: z.number(),
+  steps: z.array(stepResultSchema),
+  error: z.string().nullable(),
+  // Captura PNG del estado final de la página como data URL.
+  screenshot: z.string().nullable(),
+});
+
+export type ExecutionResult = z.infer<typeof executionResultSchema>;

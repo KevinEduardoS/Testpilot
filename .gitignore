@@ -5,6 +5,7 @@ node_modules
 .env.local
 dist
 coverage
+.runs*
 .vite
 *.tsbuildinfo
 .DS_Store

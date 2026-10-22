@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
-import { generateTest } from './api';
+import { executeTest, generateTest } from './api';
 import { Composer } from './components/Composer';
+import type { ExecutionState } from './components/ExecutionView';
 import { Header } from './components/Header';
 import { ResultPanel, type GenerationState } from './components/ResultPanel';
 import { useServiceStatus } from './hooks/useServiceStatus';
@@ -10,10 +11,12 @@ export default function App() {
   const [instruction, setInstruction] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [state, setState] = useState<GenerationState>({ phase: 'idle' });
+  const [execution, setExecution] = useState<ExecutionState>({ phase: 'idle' });
   const resultRef = useRef<HTMLDivElement>(null);
 
   const submit = async () => {
     setState({ phase: 'loading', startedAt: Date.now() });
+    setExecution({ phase: 'idle' });
     // En pantallas pequeñas el resultado queda debajo del formulario.
     if (window.matchMedia('(max-width: 1023px)').matches) {
       resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -24,6 +27,15 @@ export default function App() {
       ...(trimmedUrl === '' ? {} : { baseUrl: trimmedUrl }),
     });
     setState({ phase: 'done', result });
+  };
+
+  const execute = async () => {
+    if (state.phase !== 'done' || !state.result.ok || state.result.data.status !== 'ok') {
+      return;
+    }
+    setExecution({ phase: 'loading', startedAt: Date.now() });
+    const result = await executeTest({ script: state.result.data.test.script });
+    setExecution({ phase: 'done', result });
   };
 
   return (
@@ -39,8 +51,8 @@ export default function App() {
             Describe el caso. TestPilot escribe la prueba.
           </h1>
           <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-zinc-400">
-            Convierte instrucciones en lenguaje natural en scripts de Playwright con pasos
-            legibles, selectores accesibles y validación de seguridad.
+            Convierte instrucciones en lenguaje natural en scripts de Playwright con pasos legibles,
+            selectores accesibles y validación de seguridad.
           </p>
         </div>
 
@@ -56,7 +68,7 @@ export default function App() {
             />
           </div>
           <div ref={resultRef} className="scroll-mt-20">
-            <ResultPanel state={state} />
+            <ResultPanel state={state} execution={execution} onExecute={() => void execute()} />
           </div>
         </div>
       </main>

@@ -8,14 +8,17 @@ import {
   Info,
   ListChecks,
   LoaderCircle,
+  Play,
   ShieldCheck,
   Terminal,
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { GenerateResult } from '../api';
+import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { CodeBlock, CopyButton } from './CodeBlock';
+import { ExecutionView, type ExecutionState } from './ExecutionView';
 
 export type GenerationState =
   | { phase: 'idle' }
@@ -48,15 +51,6 @@ const IdleState = () => (
     </ul>
   </div>
 );
-
-const useElapsedSeconds = (startedAt: number) => {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
-  return Math.max(0, Math.floor((now - startedAt) / 1000));
-};
 
 const LoadingState = ({ startedAt }: { startedAt: number }) => {
   const elapsed = useElapsedSeconds(startedAt);
@@ -140,9 +134,11 @@ const NoteList = ({
     </div>
   );
 
-type Tab = 'script' | 'steps';
+type Tab = 'script' | 'steps' | 'run';
 
-const TestResult = ({ test }: { test: GeneratedTest }) => {
+type ExecutionProps = { execution: ExecutionState; onExecute: () => void };
+
+const TestResult = ({ test, execution, onExecute }: { test: GeneratedTest } & ExecutionProps) => {
   const [tab, setTab] = useState<Tab>('script');
   const lineCount = test.script.trimEnd().split('\n').length;
 
@@ -153,34 +149,81 @@ const TestResult = ({ test }: { test: GeneratedTest }) => {
 
   return (
     <div className="animate-fade-in">
-      <div className="border-b border-white/[0.06] p-5">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-          <ShieldCheck className="h-3 w-3" />
-          Validado por la política de seguridad
-        </span>
-        <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">{test.title}</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          {test.steps.length} pasos · {lineCount} líneas · Playwright + TypeScript
-        </p>
+      <div className="flex flex-col gap-4 border-b border-white/[0.06] p-5 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+            <ShieldCheck className="h-3 w-3" />
+            Validado por la política de seguridad
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight text-white">{test.title}</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            {test.steps.length} pasos · {lineCount} líneas · Playwright + TypeScript
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={execution.phase === 'loading'}
+          onClick={() => {
+            setTab('run');
+            onExecute();
+          }}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/30 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
+        >
+          {execution.phase === 'loading' ? (
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
+          {execution.phase === 'loading'
+            ? 'Ejecutando…'
+            : execution.phase === 'done'
+              ? 'Ejecutar de nuevo'
+              : 'Ejecutar prueba'}
+        </button>
       </div>
 
       <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
         <div className="flex gap-1" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'script'} className={tabClass('script')} onClick={() => setTab('script')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'script'}
+            className={tabClass('script')}
+            onClick={() => setTab('script')}
+          >
             Script
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'steps'} className={tabClass('steps')} onClick={() => setTab('steps')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'steps'}
+            className={tabClass('steps')}
+            onClick={() => setTab('steps')}
+          >
             Pasos
           </button>
+          {execution.phase !== 'idle' && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'run'}
+              className={tabClass('run')}
+              onClick={() => setTab('run')}
+            >
+              Ejecución
+            </button>
+          )}
         </div>
         {tab === 'script' && <CopyButton text={test.script} />}
       </div>
 
-      {tab === 'script' ? (
+      {tab === 'run' && <ExecutionView state={execution} />}
+      {tab === 'script' && (
         <div className="bg-black/30">
           <CodeBlock code={test.script} />
         </div>
-      ) : (
+      )}
+      {tab === 'steps' && (
         <ol className="space-y-3 p-5">
           {test.steps.map((step, index) => (
             <li key={`${index}-${step}`} className="flex gap-3 text-sm text-zinc-300">
@@ -196,14 +239,23 @@ const TestResult = ({ test }: { test: GeneratedTest }) => {
       {(test.assumptions.length > 0 || test.warnings.length > 0) && (
         <div className="grid gap-5 border-t border-white/[0.06] p-5 sm:grid-cols-2">
           <NoteList icon={Info} title="Supuestos" items={test.assumptions} tone="text-sky-400" />
-          <NoteList icon={TriangleAlert} title="Advertencias" items={test.warnings} tone="text-amber-400" />
+          <NoteList
+            icon={TriangleAlert}
+            title="Advertencias"
+            items={test.warnings}
+            tone="text-amber-400"
+          />
         </div>
       )}
     </div>
   );
 };
 
-const DoneState = ({ result }: { result: GenerateResult }) => {
+const DoneState = ({
+  result,
+  execution,
+  onExecute,
+}: { result: GenerateResult } & ExecutionProps) => {
   if (!result.ok) {
     return (
       <MessageState icon={CircleAlert} tone="danger" title="No se pudo generar la prueba">
@@ -224,7 +276,7 @@ const DoneState = ({ result }: { result: GenerateResult }) => {
 
   switch (result.data.status) {
     case 'ok':
-      return <TestResult test={result.data.test} />;
+      return <TestResult test={result.data.test} execution={execution} onExecute={onExecute} />;
     case 'needs_clarification':
       return (
         <MessageState icon={CircleQuestionMark} tone="info" title="Se necesita más información">
@@ -245,10 +297,16 @@ const DoneState = ({ result }: { result: GenerateResult }) => {
   }
 };
 
-export const ResultPanel = ({ state }: { state: GenerationState }) => (
+export const ResultPanel = ({
+  state,
+  execution,
+  onExecute,
+}: { state: GenerationState } & ExecutionProps) => (
   <section className="card min-h-[520px] overflow-hidden" aria-live="polite">
     {state.phase === 'idle' && <IdleState />}
     {state.phase === 'loading' && <LoadingState startedAt={state.startedAt} />}
-    {state.phase === 'done' && <DoneState result={state.result} />}
+    {state.phase === 'done' && (
+      <DoneState result={state.result} execution={execution} onExecute={onExecute} />
+    )}
   </section>
 );

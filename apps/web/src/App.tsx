@@ -180,7 +180,7 @@ export default function App() {
           </p>
         </div>
 
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
           <ConversationPanel
             turns={turns}
             selectedVersion={selectedVersion}

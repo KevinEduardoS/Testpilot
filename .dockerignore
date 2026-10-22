@@ -5,3 +5,5 @@
 **/.env
 **/.env.*
 .git
+**/.runs*
+**/test-results

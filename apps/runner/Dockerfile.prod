@@ -1,0 +1,44 @@
+# Imagen de producción del runner. Se construye desde la raíz del monorepo:
+#   docker build -f apps/runner/Dockerfile.prod .
+# La versión de la imagen base debe coincidir con la de playwright en apps/runner/package.json:
+# trae Chromium y sus dependencias del sistema en /ms-playwright.
+ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.49.1-jammy
+
+# Manifiestos de todos los workspaces: npm ci necesita el árbol completo del lockfile.
+FROM ${PLAYWRIGHT_IMAGE} AS manifests
+WORKDIR /workspace
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/runner/package.json apps/runner/
+COPY apps/web/package.json apps/web/
+COPY packages/shared/package.json packages/shared/
+
+FROM manifests AS build
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm ci
+COPY packages/shared packages/shared
+COPY apps/runner apps/runner
+RUN npm run build --workspace apps/runner
+
+FROM manifests AS deps
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm ci --omit=dev
+
+FROM ${PLAYWRIGHT_IMAGE}
+# tini como PID 1 reenvía las señales de parada y recoge los procesos de Chromium que quedan
+# huérfanos al matar una ejecución.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tini \
+  && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+WORKDIR /workspace
+COPY --from=deps /workspace ./
+COPY --from=build /workspace/apps/runner/dist ./apps/runner/dist
+# El reporter de progreso se carga en tiempo de ejecución, relativo a dist/.
+COPY apps/runner/reporter ./apps/runner/reporter
+# Directorio de las ejecuciones: el único lugar donde el runner escribe.
+RUN mkdir apps/runner/.runs && chown pwuser:pwuser apps/runner/.runs
+USER pwuser
+EXPOSE 3002
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "apps/runner/dist/index.js"]

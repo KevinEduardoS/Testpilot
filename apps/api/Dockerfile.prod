@@ -1,0 +1,35 @@
+# Imagen de producción de la API. Se construye desde la raíz del monorepo:
+#   docker build -f apps/api/Dockerfile.prod .
+
+# Manifiestos de todos los workspaces: npm ci necesita el árbol completo del lockfile.
+FROM node:20-alpine AS manifests
+WORKDIR /workspace
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/runner/package.json apps/runner/
+COPY apps/web/package.json apps/web/
+COPY packages/shared/package.json packages/shared/
+
+FROM manifests AS build
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm ci
+COPY packages/shared packages/shared
+COPY apps/api apps/api
+# El bundle incluye packages/shared y copia los prompts a dist/prompts.
+RUN npm run build --workspace apps/api
+
+FROM manifests AS deps
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm ci --omit=dev
+
+FROM node:20-alpine
+# tini como PID 1 reenvía las señales de parada y recoge procesos huérfanos.
+RUN apk add --no-cache tini
+ENV NODE_ENV=production
+WORKDIR /workspace
+COPY --from=deps /workspace ./
+COPY --from=build /workspace/apps/api/dist ./apps/api/dist
+USER node
+EXPOSE 3001
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "apps/api/dist/index.js"]

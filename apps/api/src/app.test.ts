@@ -1,4 +1,9 @@
-import type { ExecutionResult, GenerateTestResponse } from '@testpilot/shared';
+import {
+  executionEventSchema,
+  type ExecutionEvent,
+  type ExecutionResult,
+  type GenerateTestResponse,
+} from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
 import { HttpError } from './errors.js';
@@ -26,10 +31,20 @@ test('x', async ({ page }) => {
 });
 `;
 
+async function* toEvents(events: ExecutionEvent[]): AsyncIterable<ExecutionEvent> {
+  yield* events;
+}
+
+const parseEvents = (body: string) =>
+  body
+    .trim()
+    .split('\n')
+    .map((line) => executionEventSchema.parse(JSON.parse(line)));
+
 const setup = async (
   generateTest: TestGenerator = async () => okResponse,
   rateLimitPerHour = 10,
-  executeTest: TestExecutor = async () => passed,
+  executeTest: TestExecutor = async () => toEvents([{ type: 'result', result: passed }]),
 ) =>
   buildApp({
     webOrigin: 'http://localhost:5173',
@@ -49,7 +64,10 @@ const generate = (app: Awaited<ReturnType<typeof setup>>, payload: unknown) =>
 describe('POST /api/tests/generate', () => {
   it('devuelve la prueba generada', async () => {
     const app = await setup();
-    const response = await generate(app, { instruction: 'probar login', baseUrl: 'https://example.com' });
+    const response = await generate(app, {
+      instruction: 'probar login',
+      baseUrl: 'https://example.com',
+    });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(okResponse);
   });
@@ -63,7 +81,10 @@ describe('POST /api/tests/generate', () => {
     const app = await setup();
     const response = await generate(app, payload);
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({ error: expect.any(String), message: expect.any(String) });
+    expect(response.json()).toMatchObject({
+      error: expect.any(String),
+      message: expect.any(String),
+    });
   });
 
   it('propaga los HttpError del generador', async () => {
@@ -85,7 +106,10 @@ describe('POST /api/tests/generate', () => {
     });
     const response = await generate(app, { instruction: 'probar' });
     expect(response.statusCode).toBe(500);
-    expect(response.json()).toEqual({ error: 'internal_error', message: 'Error interno del servidor.' });
+    expect(response.json()).toEqual({
+      error: 'internal_error',
+      message: 'Error interno del servidor.',
+    });
   });
 
   it('aplica el límite de solicitudes por hora', async () => {
@@ -112,15 +136,20 @@ describe('POST /api/tests/execute', () => {
   const execute = (app: Awaited<ReturnType<typeof setup>>, payload: unknown) =>
     app.inject({ method: 'POST', url: '/api/tests/execute', payload: payload as object });
 
-  it('envía al runner un script válido', async () => {
+  it('transmite al cliente los eventos del runner', async () => {
     const scripts: string[] = [];
+    const events: ExecutionEvent[] = [
+      { type: 'step-begin', index: 0, title: 'paso' },
+      { type: 'result', result: passed },
+    ];
     const app = await setup(undefined, 10, async (script) => {
       scripts.push(script);
-      return passed;
+      return toEvents(events);
     });
     const response = await execute(app, { script: validScript });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual(passed);
+    expect(response.headers['content-type']).toContain('application/x-ndjson');
+    expect(parseEvents(response.body)).toEqual(events);
     expect(scripts).toEqual([validScript]);
   });
 
@@ -128,9 +157,11 @@ describe('POST /api/tests/execute', () => {
     let called = false;
     const app = await setup(undefined, 10, async () => {
       called = true;
-      return passed;
+      return toEvents([]);
     });
-    const response = await execute(app, { script: validScript.replace('await expect', "eval('x'); await expect") });
+    const response = await execute(app, {
+      script: validScript.replace('await expect', "eval('x'); await expect"),
+    });
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({ error: 'unsafe_script' });
     expect(called).toBe(false);

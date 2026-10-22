@@ -41,13 +41,30 @@ export type TestGenerator = (
 const REFUSAL_REASON = 'El modelo rechazó la solicitud por sus políticas de seguridad.';
 const DEFAULT_REJECTION_REASON = 'La instrucción no cumple las políticas de uso.';
 
-const buildUserMessage = ({ instruction, baseUrl }: GenerateTestRequest): string =>
-  [
+const buildUserMessage = ({ instruction, baseUrl, context }: GenerateTestRequest): string => {
+  const parts: string[] = [];
+
+  // En un refinamiento el modelo recibe el script vigente y lo que ya se pidió; todo llega
+  // desde el cliente, así que va delimitado y el prompt lo trata como datos.
+  if (context !== undefined) {
+    parts.push(
+      '<instrucciones_anteriores>',
+      ...context.previousInstructions.map((previous, index) => `${index + 1}. ${previous}`),
+      '</instrucciones_anteriores>',
+      '<script_actual>',
+      context.currentScript,
+      '</script_actual>',
+    );
+  }
+
+  parts.push(
     '<instruccion_usuario>',
     instruction,
     '</instruccion_usuario>',
     baseUrl === undefined ? 'No se indicó URL base.' : `<base_url>${baseUrl}</base_url>`,
-  ].join('\n');
+  );
+  return parts.join('\n');
+};
 
 const toResponse = (output: ModelOutput): GenerateTestResponse => {
   switch (output.status) {
@@ -83,19 +100,31 @@ const toResponse = (output: ModelOutput): GenerateTestResponse => {
 // Del más específico al más general: las subclases de APIError deben ir antes que APIError.
 const toHttpError = (error: unknown): unknown => {
   if (error instanceof Anthropic.RateLimitError) {
-    return new HttpError(503, 'ai_rate_limited', 'El servicio de IA está saturado. Intenta más tarde.');
+    return new HttpError(
+      503,
+      'ai_rate_limited',
+      'El servicio de IA está saturado. Intenta más tarde.',
+    );
   }
   if (
     error instanceof Anthropic.AuthenticationError ||
     error instanceof Anthropic.PermissionDeniedError
   ) {
-    return new HttpError(500, 'ai_misconfigured', 'La API no tiene credenciales válidas para la IA.');
+    return new HttpError(
+      500,
+      'ai_misconfigured',
+      'La API no tiene credenciales válidas para la IA.',
+    );
   }
   if (error instanceof Anthropic.APIConnectionError) {
     return new HttpError(503, 'ai_unavailable', 'No se pudo conectar con el servicio de IA.');
   }
   if (error instanceof Anthropic.APIError) {
-    return new HttpError(502, 'ai_error', `El servicio de IA respondió con un error (${error.status}).`);
+    return new HttpError(
+      502,
+      'ai_error',
+      `El servicio de IA respondió con un error (${error.status}).`,
+    );
   }
   return error;
 };
@@ -104,7 +133,9 @@ const invalidOutput = () =>
   new HttpError(502, 'invalid_model_output', 'La respuesta del modelo no cumple el esquema.');
 
 const parseModelOutput = (message: Anthropic.Beta.BetaMessage): ModelOutput => {
-  const text = message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('');
+  const text = message.content
+    .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+    .join('');
   let json: unknown;
   try {
     json = JSON.parse(text);

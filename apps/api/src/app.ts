@@ -1,9 +1,9 @@
+import { PassThrough } from 'node:stream';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import {
   appInfoSchema,
   executeTestRequestSchema,
-  executionResultSchema,
   generateTestRequestSchema,
   generateTestResponseSchema,
   healthStatusSchema,
@@ -54,7 +54,10 @@ export const buildApp = async (options: AppOptions) => {
       };
     } else if (error.statusCode === 429) {
       statusCode = 429;
-      body = { error: 'rate_limited', message: 'Límite de solicitudes alcanzado. Intenta más tarde.' };
+      body = {
+        error: 'rate_limited',
+        message: 'Límite de solicitudes alcanzado. Intenta más tarde.',
+      };
     } else if (error.statusCode !== undefined && error.statusCode < 500) {
       statusCode = error.statusCode;
       body = { error: 'bad_request', message: error.message };
@@ -107,7 +110,7 @@ export const buildApp = async (options: AppOptions) => {
   app.post(
     '/api/tests/execute',
     { config: { rateLimit: { max: options.rateLimitPerHour, timeWindow: '1 hour' } } },
-    async (request) => {
+    async (request, reply) => {
       const { script } = executeTestRequestSchema.parse(request.body);
       // El cliente puede enviar cualquier script: se valida aquí y otra vez en el runner.
       const policy = checkScriptPolicy(script);
@@ -119,7 +122,27 @@ export const buildApp = async (options: AppOptions) => {
           policy.violations,
         );
       }
-      return executionResultSchema.parse(await options.executeTest(script));
+
+      const abort = new AbortController();
+      // Los errores previos a la ejecución se lanzan aquí y responden con su estado HTTP.
+      const events = await options.executeTest(script, abort.signal);
+
+      const stream = new PassThrough();
+      // Si el navegador se desconecta, se cancela la ejecución en el runner.
+      reply.raw.on('close', () => {
+        if (!reply.raw.writableFinished) {
+          abort.abort();
+        }
+      });
+
+      void (async () => {
+        for await (const event of events) {
+          stream.write(`${JSON.stringify(event)}\n`);
+        }
+        stream.end();
+      })();
+
+      return reply.type('application/x-ndjson').send(stream);
     },
   );
 

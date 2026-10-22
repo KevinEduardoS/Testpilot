@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import pino from 'pino';
+import type { GenerateTestRequest } from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
 import { HttpError } from './errors.js';
 import { createTestGenerator } from './test-generator.js';
@@ -66,7 +67,11 @@ const setup = (status: number, payload: unknown) => {
     maxTokens: 16_000,
   });
   const logger = pino({ level: 'silent' });
-  return { captured, run: () => generate({ instruction: 'probar login inválido' }, logger) };
+  return {
+    captured,
+    run: (request: GenerateTestRequest = { instruction: 'probar login inválido' }) =>
+      generate(request, logger),
+  };
 };
 
 const errorBody = (type: string) => ({ type: 'error', error: { type, message: 'fallo' } });
@@ -115,8 +120,25 @@ describe('createTestGenerator', () => {
     });
   });
 
+  it('incluye el contexto de conversación al refinar una prueba', async () => {
+    const { captured, run } = setup(200, apiMessage(JSON.stringify(modelOutput())));
+    await run({
+      instruction: 'verifica también el título',
+      context: { previousInstructions: ['probar login inválido'], currentScript: validScript },
+    });
+
+    const content = (captured[0]?.body.messages as { content: string }[])[0]?.content ?? '';
+    expect(content).toContain(
+      '<instrucciones_anteriores>\n1. probar login inválido\n</instrucciones_anteriores>',
+    );
+    expect(content).toContain(`<script_actual>\n${validScript}\n</script_actual>`);
+    expect(content.indexOf('<script_actual>')).toBeLessThan(
+      content.indexOf('<instruccion_usuario>'),
+    );
+  });
+
   it('rechaza con 502 un script que viola la política', async () => {
-    const unsafe = validScript.replace("await page.goto", "eval('x'); await page.goto");
+    const unsafe = validScript.replace('await page.goto', "eval('x'); await page.goto");
     const { run } = setup(200, apiMessage(JSON.stringify(modelOutput({ script: unsafe }))));
     const error = await run().catch((caught: unknown) => caught);
     expect(error).toMatchObject({ statusCode: 502, code: 'unsafe_script' });
@@ -124,9 +146,16 @@ describe('createTestGenerator', () => {
   });
 
   it('devuelve la pregunta de aclaración', async () => {
-    const output = modelOutput({ status: 'needs_clarification', script: '', clarifying_question: '¿Qué sitio?' });
+    const output = modelOutput({
+      status: 'needs_clarification',
+      script: '',
+      clarifying_question: '¿Qué sitio?',
+    });
     const { run } = setup(200, apiMessage(JSON.stringify(output)));
-    await expect(run()).resolves.toEqual({ status: 'needs_clarification', question: '¿Qué sitio?' });
+    await expect(run()).resolves.toEqual({
+      status: 'needs_clarification',
+      question: '¿Qué sitio?',
+    });
   });
 
   it('falla si pide aclaración sin pregunta', async () => {
@@ -136,7 +165,11 @@ describe('createTestGenerator', () => {
   });
 
   it('devuelve el motivo del rechazo', async () => {
-    const output = modelOutput({ status: 'rejected', script: '', rejection_reason: 'Es fuerza bruta.' });
+    const output = modelOutput({
+      status: 'rejected',
+      script: '',
+      rejection_reason: 'Es fuerza bruta.',
+    });
     const { run } = setup(200, apiMessage(JSON.stringify(output)));
     await expect(run()).resolves.toEqual({ status: 'rejected', reason: 'Es fuerza bruta.' });
   });

@@ -53,6 +53,9 @@ docker compose up --build
 
 La imagen del runner ya incluye los navegadores. Los contenedores solo montan las carpetas `src`; tras cambiar dependencias o archivos de configuración, reconstruir con `docker compose up --build`.
 
+## Despliegue público
+La web se publica en Vercel y la API y el runner en Google Cloud Run, con el runner como servicio privado. Los pasos, desde la preparación del proyecto hasta activar Claude, están en [docs/deploy.md](docs/deploy.md).
+
 ## Servicios
 - Web: http://localhost:5173
 - API: http://localhost:3001

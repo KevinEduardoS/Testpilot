@@ -1,0 +1,118 @@
+# Construye las imágenes de producción y despliega la API y el runner en Cloud Run.
+#   gcloud builds submit --config cloudbuild.yaml --substitutions _WEB_ORIGIN=https://<tu-web>.vercel.app
+# La preparación única del proyecto (APIs, repositorio, cuentas de servicio y secretos) está
+# en docs/deploy.md.
+
+substitutions:
+  _REGION: us-east1
+  _REPOSITORY: testpilot
+  # Origen de la web en Vercel: es el único al que la API permite llamar (CORS).
+  _WEB_ORIGIN: https://testpilot.vercel.app
+  # demo no usa la IA ni necesita el secreto de Anthropic; anthropic sí.
+  _AI_PROVIDER: demo
+  _ALLOWED_DOMAINS: saucedemo.com
+  _AI_DAILY_TOKEN_BUDGET: '1000000'
+  _RATE_LIMIT_PER_HOUR: '10'
+
+options:
+  dynamicSubstitutions: true
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build-runner
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=apps/runner/Dockerfile.prod
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/runner:$BUILD_ID
+      - .
+    waitFor: ['-']
+
+  - id: build-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=apps/api/Dockerfile.prod
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:$BUILD_ID
+      - .
+    waitFor: ['-']
+
+  - id: push-runner
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/runner
+    waitFor: ['build-runner']
+
+  - id: push-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api
+    waitFor: ['build-api']
+
+  # El runner es privado: sin acceso público y solo invocable por la cuenta de servicio de la
+  # API. Una instancia con varias peticiones a la vez para que el ping de salud no tenga que
+  # esperar a que termine una ejecución; el propio runner admite una ejecución a la vez.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    waitFor: ['push-runner', 'push-api']
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        RUNNER_SA="testpilot-runner@$PROJECT_ID.iam.gserviceaccount.com"
+        API_SA="testpilot-api@$PROJECT_ID.iam.gserviceaccount.com"
+
+        gcloud run deploy testpilot-runner \
+          --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/runner:$BUILD_ID" \
+          --region="${_REGION}" \
+          --service-account="$$RUNNER_SA" \
+          --no-allow-unauthenticated \
+          --execution-environment=gen2 \
+          --cpu=1 \
+          --memory=2Gi \
+          --concurrency=4 \
+          --min-instances=0 \
+          --max-instances=1 \
+          --timeout=300 \
+          --port=3002 \
+          --set-env-vars="^@^NODE_ENV=production@RUN_TIMEOUT_MS=60000@ALLOWED_DOMAINS=${_ALLOWED_DOMAINS}" \
+          --set-secrets="INTERNAL_API_KEY=testpilot-internal-api-key:latest"
+
+        gcloud run services add-iam-policy-binding testpilot-runner \
+          --region="${_REGION}" \
+          --member="serviceAccount:$$API_SA" \
+          --role="roles/run.invoker" \
+          --quiet > /dev/null
+
+        RUNNER_URL="$$(gcloud run services describe testpilot-runner \
+          --region="${_REGION}" --format='value(status.url)')"
+
+        SECRETS="INTERNAL_API_KEY=testpilot-internal-api-key:latest"
+        if [ "${_AI_PROVIDER}" = "anthropic" ]; then
+          SECRETS="$$SECRETS,ANTHROPIC_API_KEY=testpilot-anthropic-api-key:latest"
+        fi
+
+        # Una sola instancia: los límites por visitante y el presupuesto de IA viven en memoria.
+        gcloud run deploy testpilot-api \
+          --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:$BUILD_ID" \
+          --region="${_REGION}" \
+          --service-account="$$API_SA" \
+          --allow-unauthenticated \
+          --cpu=1 \
+          --memory=512Mi \
+          --concurrency=80 \
+          --min-instances=0 \
+          --max-instances=1 \
+          --timeout=300 \
+          --port=3001 \
+          --set-env-vars="^@^NODE_ENV=production@RUNNER_URL=$$RUNNER_URL@RUNNER_AUTH=google-id-token@WEB_ORIGIN=${_WEB_ORIGIN}@AI_PROVIDER=${_AI_PROVIDER}@ALLOWED_DOMAINS=${_ALLOWED_DOMAINS}@AI_DAILY_TOKEN_BUDGET=${_AI_DAILY_TOKEN_BUDGET}@RATE_LIMIT_PER_HOUR=${_RATE_LIMIT_PER_HOUR}@RUN_TIMEOUT_MS=60000@TRUST_PROXY=1" \
+          --set-secrets="$$SECRETS"
+
+        echo "API: $$(gcloud run services describe testpilot-api \
+          --region="${_REGION}" --format='value(status.url)')"

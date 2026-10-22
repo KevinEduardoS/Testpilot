@@ -4,6 +4,7 @@ import {
   executeTestRequestSchema,
   executionResultSchema,
   healthStatusSchema,
+  type AllowedDomains,
   type ApiError,
   type ExecutionEvent,
 } from '@testpilot/shared';
@@ -14,6 +15,7 @@ import { ExecutionError, type Executor } from './executor.js';
 
 export type AppOptions = {
   internalApiKey: string;
+  allowedDomains: AllowedDomains;
   executor: Executor;
   logger?: FastifyServerOptions['logger'];
 };
@@ -35,7 +37,10 @@ export const buildApp = (options: AppOptions) => {
       return;
     }
     if (!isValidInternalKey(request.headers['x-internal-api-key'])) {
-      const body: ApiError = { error: 'unauthorized', message: 'Missing or invalid INTERNAL_API_KEY' };
+      const body: ApiError = {
+        error: 'unauthorized',
+        message: 'Missing or invalid INTERNAL_API_KEY',
+      };
       return reply.code(401).send(body);
     }
   });
@@ -69,14 +74,18 @@ export const buildApp = (options: AppOptions) => {
   });
 
   app.get('/health', async () =>
-    healthStatusSchema.parse({ status: 'ok', service: 'runner', timestamp: new Date().toISOString() }),
+    healthStatusSchema.parse({
+      status: 'ok',
+      service: 'runner',
+      timestamp: new Date().toISOString(),
+    }),
   );
 
   app.post('/execute', async (request, reply) => {
     const { script } = executeTestRequestSchema.parse(request.body);
 
     // Segunda línea de defensa: la API ya validó el script, pero el runner no confía en nadie.
-    const policy = checkScriptPolicy(script);
+    const policy = checkScriptPolicy(script, { allowedDomains: options.allowedDomains });
     if (!policy.ok) {
       const body: ApiError = {
         error: 'unsafe_script',

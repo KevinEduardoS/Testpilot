@@ -10,7 +10,9 @@ import {
   repairTestRequestSchema,
   repairTestResponseSchema,
   runnerPingSchema,
+  isAllowedHost,
   type AiProvider,
+  type AllowedDomains,
   type ApiError,
   type RunnerPing,
 } from '@testpilot/shared';
@@ -24,8 +26,8 @@ import type { TestRepairer } from './test-repairer.js';
 
 const RUNNER_PING_TIMEOUT_MS = 3000;
 
-const assertSafeScript = (script: string) => {
-  const policy = checkScriptPolicy(script);
+const assertSafeScript = (script: string, allowedDomains: AllowedDomains) => {
+  const policy = checkScriptPolicy(script, { allowedDomains });
   if (!policy.ok) {
     throw new HttpError(
       422,
@@ -42,6 +44,7 @@ export type AppOptions = {
   internalApiKey: string;
   rateLimitPerHour: number;
   aiProvider: AiProvider;
+  allowedDomains: AllowedDomains;
   generateTest: TestGenerator;
   repairTest: TestRepairer;
   executeTest: TestExecutor;
@@ -92,7 +95,9 @@ export const buildApp = async (options: AppOptions) => {
     healthStatusSchema.parse({ status: 'ok', service: 'api', timestamp: new Date().toISOString() }),
   );
 
-  app.get('/api/info', async () => appInfoSchema.parse({ aiProvider: options.aiProvider }));
+  app.get('/api/info', async () =>
+    appInfoSchema.parse({ aiProvider: options.aiProvider, allowedDomains: options.allowedDomains }),
+  );
 
   app.get('/api/ping', async (request, reply) => {
     let result: RunnerPing;
@@ -119,6 +124,17 @@ export const buildApp = async (options: AppOptions) => {
     { config: { rateLimit: { max: options.rateLimitPerHour, timeWindow: '1 hour' } } },
     async (request) => {
       const input = generateTestRequestSchema.parse(request.body);
+      // Se comprueba antes de llamar a la IA: una prueba para otro dominio no podría ejecutarse.
+      if (
+        input.baseUrl !== undefined &&
+        !isAllowedHost(new URL(input.baseUrl).hostname, options.allowedDomains)
+      ) {
+        throw new HttpError(
+          422,
+          'domain_not_allowed',
+          `Esta instancia de TestPilot solo puede probar: ${options.allowedDomains?.join(', ')}.`,
+        );
+      }
       return generateTestResponseSchema.parse(await options.generateTest(input, request.log));
     },
   );
@@ -129,7 +145,7 @@ export const buildApp = async (options: AppOptions) => {
     async (request) => {
       const input = repairTestRequestSchema.parse(request.body);
       // El script que se pide reparar llega del cliente: se valida como cualquier otro.
-      assertSafeScript(input.script);
+      assertSafeScript(input.script, options.allowedDomains);
       return repairTestResponseSchema.parse(await options.repairTest(input, request.log));
     },
   );
@@ -140,7 +156,7 @@ export const buildApp = async (options: AppOptions) => {
     async (request, reply) => {
       const { script } = executeTestRequestSchema.parse(request.body);
       // El cliente puede enviar cualquier script: se valida aquí y otra vez en el runner.
-      assertSafeScript(script);
+      assertSafeScript(script, options.allowedDomains);
 
       const abort = new AbortController();
       // Los errores previos a la ejecución se lanzan aquí y responden con su estado HTTP.

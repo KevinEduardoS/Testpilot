@@ -180,11 +180,53 @@ export const repairTestResponseSchema = z.discriminatedUnion('status', [
 
 export type RepairTestResponse = z.infer<typeof repairTestResponseSchema>;
 
+// Dominios que pueden visitar las pruebas: cada uno incluye sus subdominios. null significa
+// cualquier dominio y solo es aceptable en desarrollo local.
+export type AllowedDomains = readonly string[] | null;
+
+const DOMAIN_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+// Formato de ALLOWED_DOMAINS: "*" o una lista separada por comas, como "saucedemo.com,example.org".
+export const allowedDomainsSchema = z
+  .string()
+  .trim()
+  .transform((raw, context): AllowedDomains => {
+    if (raw === '*') {
+      return null;
+    }
+    const domains = raw
+      .split(',')
+      .map((domain) => domain.trim().toLowerCase())
+      .filter((domain) => domain !== '');
+    const invalid = domains.filter((domain) => !DOMAIN_PATTERN.test(domain));
+    if (domains.length === 0 || invalid.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        message: `debe ser "*" o una lista de dominios separados por comas${
+          invalid.length > 0 ? ` (no válidos: ${invalid.join(', ')})` : ''
+        }`,
+      });
+      return z.NEVER;
+    }
+    return domains;
+  });
+
+export const isAllowedHost = (hostname: string, domains: AllowedDomains): boolean => {
+  if (domains === null) {
+    return true;
+  }
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+};
+
 export const aiProviderSchema = z.enum(['anthropic', 'demo']);
 
 export type AiProvider = z.infer<typeof aiProviderSchema>;
 
-export const appInfoSchema = z.object({ aiProvider: aiProviderSchema });
+export const appInfoSchema = z.object({
+  aiProvider: aiProviderSchema,
+  allowedDomains: z.array(z.string()).nullable(),
+});
 
 export type AppInfo = z.infer<typeof appInfoSchema>;
 

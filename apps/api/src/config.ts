@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
+import { allowedDomainsSchema } from '@testpilot/shared';
 import { z } from 'zod';
 
 const rootEnvPath = fileURLToPath(new URL('../../../.env', import.meta.url));
@@ -34,6 +35,7 @@ const baseSchema = z.object({
   INTERNAL_API_KEY: z.string().min(32, 'debe tener al menos 32 caracteres'),
   RATE_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
   RUN_TIMEOUT_MS: z.coerce.number().int().positive().max(300_000).default(60_000),
+  ALLOWED_DOMAINS: z.string().default('saucedemo.com').pipe(allowedDomainsSchema),
 });
 
 // Las variables de Claude solo se exigen cuando el proveedor es anthropic.

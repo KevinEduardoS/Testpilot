@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { MAX_SCRIPT_LENGTH } from './index.js';
+import { isAllowedHost, MAX_SCRIPT_LENGTH, type AllowedDomains } from './index.js';
 
 // Política de seguridad para scripts Playwright generados por IA. Se analiza el AST en lugar
 // de buscar texto para que no se pueda evadir con espacios, comentarios o concatenaciones.
@@ -32,6 +32,8 @@ const FORBIDDEN_IDENTIFIERS = new Set([
   'playwright',
   'setTimeout',
   'setInterval',
+  // Con el navegador se pueden abrir contextos con otro proxy y saltarse la lista de dominios.
+  'browser',
 ]);
 
 // Escapes del sandbox por la cadena de prototipos, ejecución de JS arbitrario en la página,
@@ -59,6 +61,19 @@ const FORBIDDEN_PROPERTIES = new Set([
   'storageState',
   'tracing',
   'waitForTimeout',
+  // Configuración del navegador y de los contextos: permitiría cambiar el proxy que aplica la
+  // lista de dominios permitidos.
+  'use',
+  'extend',
+  'newContext',
+  'launch',
+  'connect',
+  'connectOverCDP',
+  'newCDPSession',
+  // Contenido arbitrario en la página, que podría cargar recursos locales.
+  'setContent',
+  'addScriptTag',
+  'addStyleTag',
 ]);
 
 export type ScriptPolicyResult = { ok: true } | { ok: false; violations: string[] };
@@ -79,7 +94,41 @@ const isCallTo = (node: ts.CallExpression, object: string, property?: string): b
   );
 };
 
-export const checkScriptPolicy = (script: string): ScriptPolicyResult => {
+export type ScriptPolicyOptions = {
+  // Dominios que pueden recibir page.goto(). Por defecto, cualquiera.
+  allowedDomains?: AllowedDomains;
+};
+
+// page.goto() solo acepta una URL literal http(s) de un dominio permitido. Así se puede
+// comprobar antes de ejecutar y se descartan file://, data: y URLs construidas en tiempo de
+// ejecución. El runner, además, bloquea en el navegador cualquier otro dominio.
+const checkNavigation = (
+  node: ts.CallExpression,
+  allowedDomains: AllowedDomains,
+): string | null => {
+  const [target] = node.arguments;
+  if (target === undefined || !ts.isStringLiteralLike(target)) {
+    return 'goto() debe recibir una URL literal';
+  }
+  let url: URL;
+  try {
+    url = new URL(target.text);
+  } catch {
+    return `goto() debe recibir una URL absoluta: "${target.text}"`;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return `goto() solo admite URLs http o https: "${target.text}"`;
+  }
+  if (!isAllowedHost(url.hostname, allowedDomains)) {
+    return `el dominio "${url.hostname}" no está en la lista de dominios permitidos`;
+  }
+  return null;
+};
+
+export const checkScriptPolicy = (
+  script: string,
+  { allowedDomains = null }: ScriptPolicyOptions = {},
+): ScriptPolicyResult => {
   if (script.length > MAX_SCRIPT_LENGTH) {
     return {
       ok: false,
@@ -164,6 +213,12 @@ export const checkScriptPolicy = (script: string): ScriptPolicyResult => {
       hasTest ||= isCallTo(node, 'test');
       hasStep ||= isCallTo(node, 'test', 'step');
       hasExpect ||= isCallTo(node, 'expect');
+      if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'goto') {
+        const violation = checkNavigation(node, allowedDomains);
+        if (violation !== null) {
+          report(node, violation);
+        }
+      }
     }
 
     ts.forEachChild(node, visit);

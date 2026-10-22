@@ -28,7 +28,7 @@ const fakeExecutor = (
 ): Executor => ({ isBusy, run });
 
 const setup = (executor: Executor = fakeExecutor()) =>
-  buildApp({ internalApiKey: KEY, executor, logger: false });
+  buildApp({ internalApiKey: KEY, allowedDomains: ['saucedemo.com'], executor, logger: false });
 
 // null envía la petición sin cabecera de clave.
 const post = (app: ReturnType<typeof setup>, payload: unknown, key: string | null = KEY) =>
@@ -98,6 +98,19 @@ describe('POST /execute', () => {
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({ error: 'unsafe_script' });
     expect(executed).toBe(false);
+  });
+
+  it('rechaza con 422 un script que navega a un dominio no permitido', async () => {
+    const response = await post(setup(), {
+      script: validScript.replace(
+        'await expect',
+        "await page.goto('https://example.com'); await expect",
+      ),
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      details: [expect.stringContaining('"example.com" no está en la lista')],
+    });
   });
 
   it('responde 400 con un cuerpo inválido', async () => {

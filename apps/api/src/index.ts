@@ -21,6 +21,7 @@ const createAiServices = () => {
     model: env.ANTHROPIC_MODEL,
     effort: env.AI_EFFORT,
     maxTokens: env.AI_MAX_TOKENS,
+    allowedDomains: env.ALLOWED_DOMAINS,
   };
   return {
     generateTest: createTestGenerator({
@@ -37,6 +38,7 @@ const app = await buildApp({
   internalApiKey: env.INTERNAL_API_KEY,
   rateLimitPerHour: env.RATE_LIMIT_PER_HOUR,
   aiProvider: env.AI_PROVIDER,
+  allowedDomains: env.ALLOWED_DOMAINS,
   ...createAiServices(),
   executeTest: createRunnerClient({
     runnerUrl: env.RUNNER_URL,

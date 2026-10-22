@@ -100,6 +100,7 @@ const setup = (payload: unknown) => {
     model: 'claude-opus-5-5',
     effort: 'medium',
     maxTokens: 16_000,
+    allowedDomains: ['saucedemo.com'],
   });
   return {
     bodies,

@@ -71,6 +71,7 @@ const setup = async ({
     internalApiKey: 'k'.repeat(32),
     rateLimitPerHour,
     aiProvider: 'demo',
+    allowedDomains: ['saucedemo.com'],
     generateTest,
     repairTest,
     executeTest,
@@ -85,10 +86,27 @@ describe('POST /api/tests/generate', () => {
     const app = await setup();
     const response = await generate(app, {
       instruction: 'probar login',
-      baseUrl: 'https://example.com',
+      baseUrl: 'https://www.saucedemo.com',
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(okResponse);
+  });
+
+  it('rechaza con 422 una URL base fuera de los dominios permitidos sin llamar a la IA', async () => {
+    let called = false;
+    const app = await setup({
+      generateTest: async () => {
+        called = true;
+        return okResponse;
+      },
+    });
+    const response = await generate(app, { instruction: 'probar', baseUrl: 'https://example.com' });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toEqual({
+      error: 'domain_not_allowed',
+      message: 'Esta instancia de TestPilot solo puede probar: saucedemo.com.',
+    });
+    expect(called).toBe(false);
   });
 
   it.each([
@@ -196,6 +214,17 @@ describe('POST /api/tests/execute', () => {
     expect(called).toBe(false);
   });
 
+  it('rechaza con 422 un script que navega fuera de los dominios permitidos', async () => {
+    const response = await execute(await setup(), {
+      script: validScript.replace(
+        'await expect',
+        "await page.goto('https://example.com'); await expect",
+      ),
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ error: 'unsafe_script' });
+  });
+
   it('propaga los errores del runner', async () => {
     const app = await setup({
       executeTest: async () => {
@@ -259,10 +288,10 @@ describe('POST /api/tests/repair', () => {
 });
 
 describe('GET /api/info', () => {
-  it('informa el proveedor de IA', async () => {
+  it('informa el proveedor de IA y los dominios permitidos', async () => {
     const app = await setup();
     const response = await app.inject({ method: 'GET', url: '/api/info' });
-    expect(response.json()).toEqual({ aiProvider: 'demo' });
+    expect(response.json()).toEqual({ aiProvider: 'demo', allowedDomains: ['saucedemo.com'] });
   });
 });
 

@@ -46,8 +46,9 @@ La respuesta se valida contra un esquema fijo:
 El script pasa por el mismo validador automático que al generarlo:
 
 - La única importación permitida es `import { test, expect } from '@playwright/test';`, con un solo `test()`, al menos un `test.step()` y al menos una aserción `expect()`.
+- La primera línea del mensaje indica los dominios permitidos. `page.goto()` solo acepta una URL absoluta http(s) de esos dominios, escrita como literal. Si la página redirige o enlaza a otro dominio, el navegador lo bloquea: es un fallo de `environment`, no algo que la prueba deba esquivar.
 - Prohibido: `import()` dinámico, `import.meta`, `eval`, `Function`, `require`, `process`, `globalThis`, `Buffer`, `Reflect`, `Object`, `Proxy`, `setTimeout`, `setInterval`, `fetch` y el fixture `request`.
-- Prohibido: `page.evaluate` y similares, `addInitScript`, `exposeFunction`, `route`, `screenshot`, `pdf`, `setInputFiles`, `saveAs`, `storageState`, `waitForTimeout`, `constructor`, `prototype` y `__proto__`, y el acceso a propiedades con corchetes cuyo índice no sea un literal.
+- Prohibido: `page.evaluate` y similares, `addInitScript`, `exposeFunction`, `route`, `screenshot`, `pdf`, `setInputFiles`, `saveAs`, `storageState`, `waitForTimeout`, `constructor`, `prototype` y `__proto__`, `setContent`, `addScriptTag`, `addStyleTag`, `test.use`, `test.extend`, el fixture `browser`, `newContext`, y el acceso a propiedades con corchetes cuyo índice no sea un literal.
 
 ## Seguridad
 

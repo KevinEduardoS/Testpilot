@@ -1,6 +1,7 @@
 import {
   bugReportSchema,
   diagnosisCategorySchema,
+  type AllowedDomains,
   type DiagnosisCategory,
   type ExecutionFailure,
   type RepairTestRequest,
@@ -11,7 +12,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
 import { HttpError } from './errors.js';
 import { callModel, invalidModelOutput, type ModelSettings } from './model-client.js';
-import { dataBlock } from './prompt-data.js';
+import { allowedDomainsLine, dataBlock } from './prompt-data.js';
 
 // Forma que devuelve el modelo; las reglas de negocio se validan después en toResponse.
 const modelOutputSchema = z.object({
@@ -36,7 +37,10 @@ const modelOutputSchema = z.object({
 
 type ModelOutput = z.infer<typeof modelOutputSchema>;
 
-export type TestRepairerOptions = ModelSettings & { systemPrompt: string };
+export type TestRepairerOptions = ModelSettings & {
+  systemPrompt: string;
+  allowedDomains: AllowedDomains;
+};
 
 export type TestRepairer = (
   request: RepairTestRequest,
@@ -63,8 +67,12 @@ const describeFailure = ({ status, error, steps }: ExecutionFailure): string => 
 };
 
 // Todo llega del cliente o de la página que falló: va delimitado y el prompt lo trata como datos.
-const buildUserMessage = ({ instructions, script, failure }: RepairTestRequest): string =>
+const buildUserMessage = (
+  { instructions, script, failure }: RepairTestRequest,
+  allowedDomains: AllowedDomains,
+): string =>
   [
+    allowedDomainsLine(allowedDomains),
     ...dataBlock(
       'instrucciones_usuario',
       instructions.map((instruction, index) => `${index + 1}. ${instruction}`).join('\n'),
@@ -78,7 +86,11 @@ const buildUserMessage = ({ instructions, script, failure }: RepairTestRequest):
 
 const normalizeCode = (code: string) => code.replace(/\s+/g, ' ').trim();
 
-const toResponse = (output: ModelOutput, originalScript: string): RepairTestResponse => {
+const toResponse = (
+  output: ModelOutput,
+  originalScript: string,
+  allowedDomains: AllowedDomains,
+): RepairTestResponse => {
   const diagnosis = { category: output.category, summary: output.diagnosis };
 
   if (output.outcome === 'bug_report') {
@@ -96,7 +108,7 @@ const toResponse = (output: ModelOutput, originalScript: string): RepairTestResp
   if (NOT_FIXABLE.has(output.category)) {
     throw invalidModelOutput('El modelo intentó cambiar la prueba para ocultar un fallo real.');
   }
-  const policy = checkScriptPolicy(output.script);
+  const policy = checkScriptPolicy(output.script, { allowedDomains });
   if (!policy.ok) {
     throw new HttpError(
       502,
@@ -125,13 +137,13 @@ const toResponse = (output: ModelOutput, originalScript: string): RepairTestResp
 };
 
 export const createTestRepairer =
-  ({ systemPrompt, ...settings }: TestRepairerOptions): TestRepairer =>
+  ({ systemPrompt, allowedDomains, ...settings }: TestRepairerOptions): TestRepairer =>
   async (request, logger) => {
     const outcome = await callModel(
       settings,
       {
         systemPrompt,
-        userMessage: buildUserMessage(request),
+        userMessage: buildUserMessage(request, allowedDomains),
         schema: modelOutputSchema,
         operation: 'repair-test',
       },
@@ -139,5 +151,5 @@ export const createTestRepairer =
     );
     return outcome.refused
       ? { status: 'rejected', reason: REFUSAL_REASON }
-      : toResponse(outcome.output, request.script);
+      : toResponse(outcome.output, request.script, allowedDomains);
   };

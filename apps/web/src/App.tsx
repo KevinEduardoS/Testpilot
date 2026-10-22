@@ -1,4 +1,4 @@
-import type { AiProvider } from '@testpilot/shared';
+import type { AppInfo } from '@testpilot/shared';
 import { useEffect, useRef, useState } from 'react';
 import { generateTest, getAppInfo, repairTest, streamExecution } from './api';
 import { ConversationPanel } from './components/ConversationPanel';
@@ -24,7 +24,7 @@ const isMobileLayout = () => window.matchMedia('(max-width: 1023px)').matches;
 
 export default function App() {
   const status = useServiceStatus();
-  const [aiProvider, setAiProvider] = useState<AiProvider | null>(null);
+  const [info, setInfo] = useState<AppInfo | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [executions, setExecutions] = useState<Record<number, ExecutionState>>({});
@@ -38,7 +38,7 @@ export default function App() {
   // Se consulta cada vez que la API pasa a estar disponible.
   useEffect(() => {
     if (status.api === 'up') {
-      void getAppInfo().then((info) => setAiProvider(info?.aiProvider ?? null));
+      void getAppInfo().then(setInfo);
     }
   }, [status.api]);
 
@@ -166,7 +166,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Header api={status.api} runner={status.runner} demoMode={aiProvider === 'demo'} />
+      <Header api={status.api} runner={status.runner} demoMode={info?.aiProvider === 'demo'} />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-10 pt-8 sm:px-6">
         <div className="mb-6">
@@ -184,7 +184,8 @@ export default function App() {
           <ConversationPanel
             turns={turns}
             selectedVersion={selectedVersion}
-            demoMode={aiProvider === 'demo'}
+            demoMode={info?.aiProvider === 'demo'}
+            allowedDomains={info?.allowedDomains ?? null}
             draft={draft}
             baseUrl={baseUrl}
             busy={generating}

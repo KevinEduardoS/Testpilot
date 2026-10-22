@@ -46,6 +46,7 @@ services:
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-120000}
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-10}
       RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-60000}
+      ALLOWED_DOMAINS: ${ALLOWED_DOMAINS:-saucedemo.com}
     ports:
       - '3001:3001'
     healthcheck:
@@ -68,6 +69,7 @@ services:
       RUNNER_PORT: 3002
       RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-60000}
       SNAPSHOT_MAX_CHARS: ${SNAPSHOT_MAX_CHARS:-40000}
+      ALLOWED_DOMAINS: ${ALLOWED_DOMAINS:-saucedemo.com}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Define INTERNAL_API_KEY en .env}
     expose:
       - '3002'

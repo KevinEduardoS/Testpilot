@@ -1,10 +1,10 @@
-import type { GenerateTestRequest, GenerateTestResponse } from '@testpilot/shared';
+import type { AllowedDomains, GenerateTestRequest, GenerateTestResponse } from '@testpilot/shared';
 import { checkScriptPolicy } from '@testpilot/shared/script-policy';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
 import { HttpError } from './errors.js';
 import { callModel, invalidModelOutput, type ModelSettings } from './model-client.js';
-import { dataBlock, neutralizeTags } from './prompt-data.js';
+import { allowedDomainsLine, dataBlock, neutralizeTags } from './prompt-data.js';
 
 // Forma que devuelve el modelo; las reglas de negocio se validan después en toResponse.
 const modelOutputSchema = z.object({
@@ -20,7 +20,10 @@ const modelOutputSchema = z.object({
 
 type ModelOutput = z.infer<typeof modelOutputSchema>;
 
-export type TestGeneratorOptions = ModelSettings & { systemPrompt: string };
+export type TestGeneratorOptions = ModelSettings & {
+  systemPrompt: string;
+  allowedDomains: AllowedDomains;
+};
 
 export type TestGenerator = (
   request: GenerateTestRequest,
@@ -30,8 +33,11 @@ export type TestGenerator = (
 const REFUSAL_REASON = 'El modelo rechazó la solicitud por sus políticas de seguridad.';
 const DEFAULT_REJECTION_REASON = 'La instrucción no cumple las políticas de uso.';
 
-const buildUserMessage = ({ instruction, baseUrl, context }: GenerateTestRequest): string => {
-  const parts: string[] = [];
+const buildUserMessage = (
+  { instruction, baseUrl, context }: GenerateTestRequest,
+  allowedDomains: AllowedDomains,
+): string => {
+  const parts: string[] = [allowedDomainsLine(allowedDomains)];
 
   // En un refinamiento el modelo recibe el script vigente y lo que ya se pidió; todo llega
   // desde el cliente, así que va delimitado y el prompt lo trata como datos.
@@ -56,7 +62,7 @@ const buildUserMessage = ({ instruction, baseUrl, context }: GenerateTestRequest
   return parts.join('\n');
 };
 
-const toResponse = (output: ModelOutput): GenerateTestResponse => {
+const toResponse = (output: ModelOutput, allowedDomains: AllowedDomains): GenerateTestResponse => {
   switch (output.status) {
     case 'needs_clarification':
       if (!output.clarifying_question) {
@@ -68,7 +74,7 @@ const toResponse = (output: ModelOutput): GenerateTestResponse => {
       return { status: 'rejected', reason: output.rejection_reason || DEFAULT_REJECTION_REASON };
 
     case 'ok': {
-      const policy = checkScriptPolicy(output.script);
+      const policy = checkScriptPolicy(output.script, { allowedDomains });
       if (!policy.ok) {
         throw new HttpError(
           502,
@@ -84,13 +90,13 @@ const toResponse = (output: ModelOutput): GenerateTestResponse => {
 };
 
 export const createTestGenerator =
-  ({ systemPrompt, ...settings }: TestGeneratorOptions): TestGenerator =>
+  ({ systemPrompt, allowedDomains, ...settings }: TestGeneratorOptions): TestGenerator =>
   async (request, logger) => {
     const outcome = await callModel(
       settings,
       {
         systemPrompt,
-        userMessage: buildUserMessage(request),
+        userMessage: buildUserMessage(request, allowedDomains),
         schema: modelOutputSchema,
         operation: 'generate-test',
       },
@@ -98,5 +104,5 @@ export const createTestGenerator =
     );
     return outcome.refused
       ? { status: 'rejected', reason: REFUSAL_REASON }
-      : toResponse(outcome.output);
+      : toResponse(outcome.output, allowedDomains);
   };

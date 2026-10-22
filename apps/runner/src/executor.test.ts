@@ -1,4 +1,6 @@
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,7 +33,12 @@ beforeAll(async () => {
   // Dentro del paquete para que los scripts resuelvan @playwright/test, igual que en producción.
   const packageDir = fileURLToPath(new URL('..', import.meta.url));
   runsDir = await mkdtemp(join(packageDir, '.runs-test-'));
-  executor = createExecutor({ runsDir, timeoutMs: 10_000, snapshotMaxChars: 2000 });
+  executor = createExecutor({
+    runsDir,
+    timeoutMs: 10_000,
+    snapshotMaxChars: 2000,
+    allowedDomains: ['example.invalid'],
+  });
 });
 
 afterAll(async () => {
@@ -133,7 +140,9 @@ describe('createExecutor', () => {
   it(
     'devuelve un fallo cuando el script no compila',
     async () => {
-      const result = await execute(`import { test } from '@playwright/test';\ntest('x', async ( => {});`);
+      const result = await execute(
+        `import { test } from '@playwright/test';\ntest('x', async ( => {});`,
+      );
       expect(result.status).toBe('failed');
       expect(result.steps).toEqual([]);
       expect(result.error).toBeTruthy();
@@ -234,4 +243,53 @@ describe('cleanErrorMessage', () => {
   it('devuelve null sin mensaje', () => {
     expect(cleanErrorMessage(undefined)).toBeNull();
   });
+});
+
+describe('createExecutor con dominios permitidos', () => {
+  let server: Server;
+  let localUrl: string;
+
+  beforeAll(async () => {
+    server = createServer((_request, response) => response.end('<h1>servicio interno</h1>'));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    localUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+  });
+
+  afterAll(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const visitLocal = () => `import { test, expect } from '@playwright/test';
+
+test('visitar', async ({ page }) => {
+  await test.step('abrir el servicio local', async () => {
+    await page.goto('${localUrl}');
+    await expect(page.getByRole('heading')).toHaveText('servicio interno');
+  });
+});
+`;
+
+  it(
+    'bloquea en el navegador los destinos fuera de la lista, también localhost',
+    async () => {
+      const result = await execute(visitLocal());
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('ERR_PROXY_CONNECTION_FAILED');
+    },
+    BROWSER_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'no restringe la red si se permite cualquier dominio',
+    async () => {
+      const unrestricted = createExecutor({
+        runsDir,
+        timeoutMs: 10_000,
+        snapshotMaxChars: 2000,
+        allowedDomains: null,
+      });
+      expect((await unrestricted.run(visitLocal())).status).toBe('passed');
+    },
+    BROWSER_TEST_TIMEOUT_MS,
+  );
 });

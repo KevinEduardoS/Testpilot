@@ -73,6 +73,8 @@ Los `POST` tienen un límite por IP configurable con `RATE_LIMIT_PER_HOUR`.
 ## Variables de entorno
 Todos los servicios leen el `.env` de la raíz, pero cada uno toma solo las variables que necesita. La web solo recibe las que empiezan por `VITE_`.
 
+`ALLOWED_DOMAINS` define los dominios que pueden visitar las pruebas, separados por comas (cada uno incluye sus subdominios). Por defecto es `saucedemo.com`. Con `*` se permite cualquiera, algo aceptable solo en desarrollo local. La API y el runner deben tener el mismo valor.
+
 `SNAPSHOT_MAX_CHARS` limita el tamaño del árbol de accesibilidad que el runner captura al fallar una prueba (máximo y valor por defecto: 40 000 caracteres).
 
 ## Seguridad
@@ -84,8 +86,11 @@ Todos los servicios leen el `.env` de la raíz, pero cada uno toma solo las vari
 - El progreso llega al runner por un canal propio (descriptor 3) que el script no puede escribir, así que no puede falsear los pasos.
 - Las instrucciones del usuario y el contenido de las páginas se tratan como datos, nunca como instrucciones para el modelo. Van delimitados por etiquetas y, si contienen una de esas etiquetas, se elimina para que no puedan cerrar su bloque.
 - Una reparación nunca puede ocultar un fallo: la API descarta las que corrigen la prueba cuando la causa es un bug o el entorno, las que devuelven el mismo script y las que tienen menos aserciones `expect()` que el original.
+- Las pruebas solo pueden visitar los dominios de `ALLOWED_DOMAINS`, con dos barreras:
+  - **Estática:** `page.goto()` solo acepta una URL absoluta http(s) escrita como literal y de un dominio permitido. Así se descartan `file://` y las URLs construidas en tiempo de ejecución. Las URL base de otros dominios se rechazan antes de llamar a la IA.
+  - **De red:** el runner lanza Chromium con todo el tráfico dirigido a un proxy inexistente, salvo el de los dominios permitidos. Fallan otros sitios, IPs, `localhost` y la IP de metadatos de la nube, incluso tras una redirección o un clic en un enlace.
+  - La política prohíbe además lo que permitiría saltarse el proxy o cargar contenido arbitrario: `test.use`, `test.extend`, el fixture `browser`, `newContext`, `setContent` y `addScriptTag`.
 - El snapshot de la página lo captura un hook que el runner añade al final del script ya validado. Si el script adjunta uno propio, se usa el del runner.
 
 ### Límites conocidos
-- El navegador del runner puede visitar cualquier URL. Restringir los dominios permitidos es necesario antes de exponer el servicio públicamente.
 - Sin Docker, el runner ejecuta las pruebas con los permisos del usuario local; el aislamiento de procesos depende del contenedor.

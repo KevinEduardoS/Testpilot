@@ -65,6 +65,7 @@ const setup = (status: number, payload: unknown) => {
     model: 'claude-opus-5-5',
     effort: 'medium',
     maxTokens: 16_000,
+    allowedDomains: ['saucedemo.com'],
   });
   const logger = pino({ level: 'silent' });
   return {
@@ -135,6 +136,21 @@ describe('createTestGenerator', () => {
     expect(content.indexOf('<script_actual>')).toBeLessThan(
       content.indexOf('<instruccion_usuario>'),
     );
+  });
+
+  it('indica al modelo los dominios permitidos', async () => {
+    const { captured, run } = setup(200, apiMessage(JSON.stringify(modelOutput())));
+    await run();
+    const content = (captured[0]?.body.messages as { content: string }[])[0]?.content ?? '';
+    expect(content).toMatch(
+      /^Dominios permitidos: saucedemo\.com y sus subdominios\. Cualquier otro está bloqueado\.\n/,
+    );
+  });
+
+  it('rechaza con 502 un script que navega fuera de los dominios permitidos', async () => {
+    const offsite = validScript.replace('https://www.saucedemo.com', 'https://example.com');
+    const { run } = setup(200, apiMessage(JSON.stringify(modelOutput({ script: offsite }))));
+    await expectHttpError(run(), 502, 'unsafe_script');
   });
 
   it('rechaza con 502 un script que viola la política', async () => {

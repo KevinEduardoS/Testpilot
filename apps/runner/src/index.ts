@@ -8,10 +8,12 @@ const runsDir = fileURLToPath(new URL('../.runs/', import.meta.url));
 
 const app = buildApp({
   internalApiKey: env.INTERNAL_API_KEY,
+  allowedDomains: env.ALLOWED_DOMAINS,
   executor: createExecutor({
     runsDir,
     timeoutMs: env.RUN_TIMEOUT_MS,
     snapshotMaxChars: env.SNAPSHOT_MAX_CHARS,
+    allowedDomains: env.ALLOWED_DOMAINS,
   }),
 });
 

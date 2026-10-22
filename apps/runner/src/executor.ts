@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import type { ExecutionResult, StepResult } from '@testpilot/shared';
+import type { AllowedDomains, ExecutionResult, StepResult } from '@testpilot/shared';
 import { z } from 'zod';
 
 // Margen para que Playwright cierre el navegador y escriba el reporte tras el timeout del test.
@@ -142,7 +142,24 @@ const truncate = (text: string, maxChars: number): string =>
     ? text
     : text.slice(0, maxChars - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
 
-const buildConfig = (timeoutMs: number): string =>
+// Todo el tráfico del navegador va a un proxy inexistente salvo el de los dominios permitidos,
+// así que cualquier otro destino falla: otros sitios, IPs, localhost (<-loopback> quita la
+// excepción que Chromium hace con él) y la IP de metadatos de la nube. Cubre también
+// redirecciones, enlaces y recursos que la política estática no puede ver.
+const BLACKHOLE_PROXY = 'http://127.0.0.1:9';
+
+const networkArgs = (allowedDomains: AllowedDomains): string[] => {
+  if (allowedDomains === null) {
+    return [];
+  }
+  const bypass = allowedDomains.flatMap((domain) => [domain, `*.${domain}`]);
+  return [
+    `--proxy-server=${BLACKHOLE_PROXY}`,
+    `--proxy-bypass-list=${[...bypass, '<-loopback>'].join(';')}`,
+  ];
+};
+
+const buildConfig = (timeoutMs: number, allowedDomains: AllowedDomains): string =>
   `export default ${JSON.stringify(
     {
       testDir: '.',
@@ -152,7 +169,13 @@ const buildConfig = (timeoutMs: number): string =>
       workers: 1,
       reporter: [['json', { outputFile: 'report.json' }], [progressReporter]],
       outputDir: 'artifacts',
-      use: { headless: true, screenshot: 'on', trace: 'off', video: 'off' },
+      use: {
+        headless: true,
+        screenshot: 'on',
+        trace: 'off',
+        video: 'off',
+        launchOptions: { args: networkArgs(allowedDomains) },
+      },
     },
     null,
     2,
@@ -268,7 +291,12 @@ const readScreenshot = async (path: string | undefined): Promise<string | null> 
   return `data:image/png;base64,${data.toString('base64')}`;
 };
 
-export type ExecutorOptions = { runsDir: string; timeoutMs: number; snapshotMaxChars: number };
+export type ExecutorOptions = {
+  runsDir: string;
+  timeoutMs: number;
+  snapshotMaxChars: number;
+  allowedDomains: AllowedDomains;
+};
 
 export type RunScriptOptions = {
   onProgress?: (event: ExecutionProgress) => void;
@@ -285,6 +313,7 @@ export const createExecutor = ({
   runsDir,
   timeoutMs,
   snapshotMaxChars,
+  allowedDomains,
 }: ExecutorOptions): Executor => {
   let running = false;
 
@@ -302,7 +331,10 @@ export const createExecutor = ({
     try {
       await mkdir(runDir, { recursive: true });
       await writeFile(join(runDir, 'generated.spec.ts'), `${script}\n${SNAPSHOT_HOOK}`);
-      await writeFile(join(runDir, 'playwright.config.mjs'), buildConfig(timeoutMs));
+      await writeFile(
+        join(runDir, 'playwright.config.mjs'),
+        buildConfig(timeoutMs, allowedDomains),
+      );
 
       const stderr = await runPlaywright({
         cwd: runDir,

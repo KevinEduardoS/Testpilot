@@ -5,8 +5,10 @@ import {
   CircleSlash,
   CircleX,
   Clock,
+  ListTree,
   LoaderCircle,
   Timer,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import type { ExecutionState, LiveStep } from '../execution';
@@ -98,7 +100,42 @@ const RunningView = ({ startedAt, steps }: { startedAt: number; steps: LiveStep[
   );
 };
 
-const ResultView = ({ result }: { result: ExecutionResult }) => {
+type RepairProps = { repairDisabled: boolean; onRepair: () => void };
+
+const RepairPrompt = ({ repairDisabled, onRepair }: RepairProps) => (
+  <div className="flex flex-col gap-3 rounded-lg border border-indigo-400/20 bg-indigo-500/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
+    <p className="text-sm leading-relaxed text-zinc-300">
+      TestPilot puede analizar el error y el estado de la página para{' '}
+      <span className="text-white">corregir la prueba</span> o, si el fallo es del sitio,{' '}
+      <span className="text-white">redactar el reporte del bug</span>.
+    </p>
+    <button
+      type="button"
+      disabled={repairDisabled}
+      onClick={onRepair}
+      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/30 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+    >
+      <Wrench className="h-4 w-4" />
+      Diagnosticar y reparar
+    </button>
+  </div>
+);
+
+const PageSnapshot = ({ snapshot }: { snapshot: string }) => (
+  <details className="group rounded-lg border border-white/[0.08] bg-white/[0.02]">
+    <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-xs font-medium text-zinc-400 transition hover:text-zinc-200">
+      <ListTree className="h-3.5 w-3.5" />
+      Árbol de accesibilidad de la página al fallar
+      <span className="ml-auto text-zinc-600 group-open:hidden">mostrar</span>
+      <span className="ml-auto hidden text-zinc-600 group-open:inline">ocultar</span>
+    </summary>
+    <pre className="max-h-72 overflow-auto border-t border-white/[0.06] p-3.5 font-mono text-[11.5px] leading-5 text-zinc-400">
+      {snapshot}
+    </pre>
+  </details>
+);
+
+const ResultView = ({ result, ...repair }: RepairProps & { result: ExecutionResult }) => {
   const banner = statusBanner[result.status];
   const BannerIcon = banner.icon;
   const stepHasError = result.steps.some((step) => step.error !== null);
@@ -121,6 +158,10 @@ const ResultView = ({ result }: { result: ExecutionResult }) => {
 
       {result.error !== null && !stepHasError && <ErrorBox message={result.error} />}
 
+      {result.status !== 'passed' && <RepairPrompt {...repair} />}
+
+      {result.pageSnapshot !== null && <PageSnapshot snapshot={result.pageSnapshot} />}
+
       {result.screenshot !== null && (
         <figure>
           <img
@@ -137,7 +178,7 @@ const ResultView = ({ result }: { result: ExecutionResult }) => {
   );
 };
 
-export const ExecutionView = ({ state }: { state: ExecutionState }) => {
+export const ExecutionView = ({ state, ...repair }: RepairProps & { state: ExecutionState }) => {
   switch (state.phase) {
     case 'idle':
       return null;
@@ -145,7 +186,7 @@ export const ExecutionView = ({ state }: { state: ExecutionState }) => {
       return <RunningView startedAt={state.startedAt} steps={state.steps} />;
     case 'done':
       if (state.outcome.ok) {
-        return <ResultView result={state.outcome.result} />;
+        return <ResultView result={state.outcome.result} {...repair} />;
       }
       return (
         <div className="animate-fade-in p-5">

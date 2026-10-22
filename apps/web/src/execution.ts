@@ -1,4 +1,13 @@
-import type { ApiError, ExecutionEvent, ExecutionResult } from '@testpilot/shared';
+import {
+  MAX_ERROR_LENGTH,
+  MAX_PAGE_SNAPSHOT_LENGTH,
+  MAX_STEP_TITLE_LENGTH,
+  MAX_STEPS,
+  type ApiError,
+  type ExecutionEvent,
+  type ExecutionFailure,
+  type ExecutionResult,
+} from '@testpilot/shared';
 
 export type LiveStep = {
   title: string;
@@ -63,4 +72,26 @@ export const applyExecutionEvent = (
         }),
       };
   }
+};
+
+const clip = (text: string, maxLength: number) => text.slice(0, maxLength);
+const clipNullable = (text: string | null, maxLength: number) =>
+  text === null ? null : clip(text, maxLength);
+
+// Evidencia de un fallo para pedir su reparación, recortada a los límites que acepta la API.
+// Devuelve null si la prueba pasó: no hay nada que reparar.
+export const toExecutionFailure = (result: ExecutionResult): ExecutionFailure | null => {
+  if (result.status === 'passed') {
+    return null;
+  }
+  return {
+    status: result.status,
+    error: clipNullable(result.error, MAX_ERROR_LENGTH),
+    steps: result.steps.slice(0, MAX_STEPS).map((step) => ({
+      ...step,
+      title: clip(step.title, MAX_STEP_TITLE_LENGTH),
+      error: clipNullable(step.error, MAX_ERROR_LENGTH),
+    })),
+    pageSnapshot: clipNullable(result.pageSnapshot, MAX_PAGE_SNAPSHOT_LENGTH),
+  };
 };

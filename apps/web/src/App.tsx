@@ -1,11 +1,22 @@
 import type { AiProvider } from '@testpilot/shared';
 import { useEffect, useRef, useState } from 'react';
-import { generateTest, getAppInfo, streamExecution } from './api';
+import { generateTest, getAppInfo, repairTest, streamExecution } from './api';
 import { ConversationPanel } from './components/ConversationPanel';
 import { Header } from './components/Header';
 import { Workspace } from './components/Workspace';
-import { buildContext, nextVersionNumber, versionsOf, type Turn } from './conversation';
-import { applyExecutionEvent, startExecution, type ExecutionState } from './execution';
+import {
+  buildContext,
+  instructionsForVersion,
+  nextVersionNumber,
+  versionsOf,
+  type Turn,
+} from './conversation';
+import {
+  applyExecutionEvent,
+  startExecution,
+  toExecutionFailure,
+  type ExecutionState,
+} from './execution';
 import { useServiceStatus } from './hooks/useServiceStatus';
 
 const IDLE_EXECUTION: ExecutionState = { phase: 'idle' };
@@ -36,6 +47,14 @@ export default function App() {
   const generating = turns.some((turn) => turn.reply.phase === 'loading');
   const executing = Object.values(executions).some((execution) => execution.phase === 'running');
 
+  const showVersion = (version: number) => {
+    setSelectedVersion(version);
+    // En pantallas pequeñas el panel de la prueba queda debajo de la conversación.
+    if (isMobileLayout()) {
+      workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const send = async (instruction: string, url: string) => {
     const id = nextTurnId.current++;
     const conversation = conversationId.current;
@@ -45,7 +64,7 @@ export default function App() {
 
     setTurns((previous) => [
       ...previous,
-      { id, instruction, reply: { phase: 'loading', startedAt: Date.now() } },
+      { id, kind: 'instruction', instruction, reply: { phase: 'loading', startedAt: Date.now() } },
     ]);
     setDraft('');
 
@@ -61,15 +80,56 @@ export default function App() {
     const version = result.ok && result.data.status === 'ok' ? versionNumber : null;
     setTurns((previous) =>
       previous.map((turn) =>
-        turn.id === id ? { ...turn, reply: { phase: 'done', result, version } } : turn,
+        turn.id === id && turn.kind === 'instruction'
+          ? { ...turn, reply: { phase: 'done', result, version } }
+          : turn,
       ),
     );
     if (version !== null) {
-      setSelectedVersion(version);
-      // En pantallas pequeñas el panel de la prueba queda debajo de la conversación.
-      if (isMobileLayout()) {
-        workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      showVersion(version);
+    }
+  };
+
+  // Diagnostica la última ejecución fallida de la versión seleccionada. Si la IA corrige la
+  // prueba, la corrección es una versión nueva; si encuentra un bug, la respuesta es el reporte.
+  const repair = async () => {
+    const execution = selected === undefined ? undefined : executions[selected.number];
+    if (selected === undefined || execution?.phase !== 'done' || !execution.outcome.ok) {
+      return;
+    }
+    const failure = toExecutionFailure(execution.outcome.result);
+    if (failure === null) {
+      return;
+    }
+    const id = nextTurnId.current++;
+    const conversation = conversationId.current;
+    const versionNumber = nextVersionNumber(turns);
+    const sourceVersion = selected.number;
+
+    setTurns((previous) => [
+      ...previous,
+      { id, kind: 'repair', sourceVersion, reply: { phase: 'loading', startedAt: Date.now() } },
+    ]);
+
+    const result = await repairTest({
+      instructions: instructionsForVersion(turns, sourceVersion),
+      script: selected.test.script,
+      failure,
+    });
+    if (conversation !== conversationId.current) {
+      return;
+    }
+
+    const version = result.ok && result.data.status === 'fixed' ? versionNumber : null;
+    setTurns((previous) =>
+      previous.map((turn) =>
+        turn.id === id && turn.kind === 'repair'
+          ? { ...turn, reply: { phase: 'done', result, version } }
+          : turn,
+      ),
+    );
+    if (version !== null) {
+      showVersion(version);
     }
   };
 
@@ -114,8 +174,9 @@ export default function App() {
             Describe el caso. TestPilot escribe la prueba.
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-400">
-            Convierte instrucciones en lenguaje natural en scripts de Playwright, pídele cambios en
-            la conversación y ejecuta cada versión en un navegador real.
+            Convierte instrucciones en lenguaje natural en scripts de Playwright, ejecútalos en un
+            navegador real y, si fallan, deja que la IA corrija la prueba o redacte el reporte del
+            bug.
           </p>
         </div>
 
@@ -139,7 +200,9 @@ export default function App() {
               generating={generating}
               execution={selectedExecution}
               executeDisabled={executing}
+              repairDisabled={generating || executing}
               onExecute={() => void execute()}
+              onRepair={() => void repair()}
             />
           </div>
         </div>

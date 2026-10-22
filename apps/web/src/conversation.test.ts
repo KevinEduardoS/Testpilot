@@ -1,6 +1,12 @@
 import { MAX_PREVIOUS_INSTRUCTIONS, type GeneratedTest } from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
-import { buildContext, nextVersionNumber, versionsOf, type Turn } from './conversation';
+import {
+  buildContext,
+  instructionsForVersion,
+  nextVersionNumber,
+  versionsOf,
+  type Turn,
+} from './conversation';
 
 const test = (script: string): GeneratedTest => ({
   title: script,
@@ -12,6 +18,7 @@ const test = (script: string): GeneratedTest => ({
 
 const okTurn = (id: number, version: number, script: string): Turn => ({
   id,
+  kind: 'instruction',
   instruction: `instrucción ${id}`,
   reply: {
     phase: 'done',
@@ -24,6 +31,7 @@ const turns: Turn[] = [
   okTurn(1, 1, 'script v1'),
   {
     id: 2,
+    kind: 'instruction',
     instruction: 'instrucción 2',
     reply: {
       phase: 'done',
@@ -32,7 +40,12 @@ const turns: Turn[] = [
     },
   },
   okTurn(3, 2, 'script v2'),
-  { id: 4, instruction: 'instrucción 4', reply: { phase: 'loading', startedAt: 0 } },
+  {
+    id: 4,
+    kind: 'instruction',
+    instruction: 'instrucción 4',
+    reply: { phase: 'loading', startedAt: 0 },
+  },
 ];
 
 describe('versionsOf', () => {
@@ -41,6 +54,50 @@ describe('versionsOf', () => {
       [1, 'script v1'],
       [2, 'script v2'],
     ]);
+  });
+});
+
+const repairTurn = (id: number, sourceVersion: number, version: number): Turn => ({
+  id,
+  kind: 'repair',
+  sourceVersion,
+  reply: {
+    phase: 'done',
+    result: {
+      ok: true,
+      data: {
+        status: 'fixed',
+        diagnosis: { category: 'selector', summary: 'selector' },
+        test: test(`reparación de v${sourceVersion}`),
+      },
+    },
+    version,
+  },
+});
+
+describe('versiones reparadas', () => {
+  const withRepair: Turn[] = [okTurn(1, 1, 'script v1'), repairTurn(2, 1, 2), okTurn(3, 3, 'v3')];
+
+  it('cuentan como versiones e indican de cuál son reparación', () => {
+    expect(
+      versionsOf(withRepair).map(({ number, repairedFrom }) => [number, repairedFrom]),
+    ).toEqual([
+      [1, null],
+      [2, 1],
+      [3, null],
+    ]);
+  });
+
+  it('no aportan instrucciones al contexto', () => {
+    expect(buildContext(withRepair, versionsOf(withRepair)[1])?.previousInstructions).toEqual([
+      'instrucción 1',
+      'instrucción 3',
+    ]);
+  });
+
+  it('heredan las instrucciones previas a la reparación', () => {
+    expect(instructionsForVersion(withRepair, 2)).toEqual(['instrucción 1']);
+    expect(instructionsForVersion(withRepair, 3)).toEqual(['instrucción 1', 'instrucción 3']);
   });
 });
 

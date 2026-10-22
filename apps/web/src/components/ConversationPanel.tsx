@@ -1,19 +1,21 @@
-import { EXAMPLES, MAX_INSTRUCTION_LENGTH } from '@testpilot/shared';
+import { EXAMPLES, MAX_INSTRUCTION_LENGTH, type ApiError } from '@testpilot/shared';
 import {
   ArrowUp,
   Ban,
   CircleAlert,
   CircleQuestionMark,
-  FileCode,
   FlaskConical,
   Globe,
   LoaderCircle,
   RotateCcw,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import type { Turn, TurnReply } from '../conversation';
+import type { InstructionReply, RepairReply, Turn } from '../conversation';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
+import { BugReportCard, DiagnosisNotice } from './DiagnosisViews';
+import { VersionCard } from './VersionCard';
 
 type ConversationPanelProps = {
   turns: Turn[];
@@ -29,12 +31,12 @@ type ConversationPanelProps = {
   onReset: () => void;
 };
 
-const PendingReply = ({ startedAt }: { startedAt: number }) => {
+const PendingReply = ({ startedAt, label }: { startedAt: number; label: string }) => {
   const elapsed = useElapsedSeconds(startedAt);
   return (
     <div className="flex items-center gap-2.5 text-sm text-zinc-400">
       <LoaderCircle className="h-4 w-4 animate-spin text-indigo-400" />
-      Generando la prueba…
+      {label}
       <span className="font-mono text-xs tabular-nums text-zinc-600">{elapsed}s</span>
     </div>
   );
@@ -63,33 +65,41 @@ const Notice = ({
   </div>
 );
 
-const Reply = ({
+const ErrorNotice = ({ error }: { error: ApiError }) => (
+  <Notice tone="danger" icon={CircleAlert}>
+    {error.message}
+    {error.details && error.details.length > 0 && (
+      <ul className="mt-2 space-y-0.5 font-mono text-xs text-rose-200/70">
+        {error.details.map((detail) => (
+          <li key={detail}>{detail}</li>
+        ))}
+      </ul>
+    )}
+  </Notice>
+);
+
+const RejectedNotice = ({ reason }: { reason: string }) => (
+  <Notice tone="danger" icon={Ban}>
+    <span className="font-medium">Solicitud rechazada.</span> {reason}
+  </Notice>
+);
+
+type SelectionProps = {
+  selectedVersion: number | null;
+  onSelectVersion: (version: number) => void;
+};
+
+const InstructionReplyView = ({
   reply,
   selectedVersion,
   onSelectVersion,
-}: {
-  reply: TurnReply;
-  selectedVersion: number | null;
-  onSelectVersion: (version: number) => void;
-}) => {
+}: SelectionProps & { reply: InstructionReply }) => {
   if (reply.phase === 'loading') {
-    return <PendingReply startedAt={reply.startedAt} />;
+    return <PendingReply startedAt={reply.startedAt} label="Generando la prueba…" />;
   }
   const { result, version } = reply;
-
   if (!result.ok) {
-    return (
-      <Notice tone="danger" icon={CircleAlert}>
-        {result.error.message}
-        {result.error.details && result.error.details.length > 0 && (
-          <ul className="mt-2 space-y-0.5 font-mono text-xs text-rose-200/70">
-            {result.error.details.map((detail) => (
-              <li key={detail}>{detail}</li>
-            ))}
-          </ul>
-        )}
-      </Notice>
-    );
+    return <ErrorNotice error={result.error} />;
   }
 
   switch (result.data.status) {
@@ -100,44 +110,78 @@ const Reply = ({
         </Notice>
       );
     case 'rejected':
-      return (
-        <Notice tone="danger" icon={Ban}>
-          <span className="font-medium">Solicitud rechazada.</span> {result.data.reason}
-        </Notice>
+      return <RejectedNotice reason={result.data.reason} />;
+    case 'ok':
+      return version === null ? null : (
+        <VersionCard
+          title={result.data.test.title}
+          stepCount={result.data.test.steps.length}
+          version={version}
+          selected={version === selectedVersion}
+          onSelect={onSelectVersion}
+        />
       );
-    case 'ok': {
-      const selected = version !== null && version === selectedVersion;
-      return (
-        <button
-          type="button"
-          onClick={() => version !== null && onSelectVersion(version)}
-          className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
-            selected
-              ? 'border-indigo-400/40 bg-indigo-500/10'
-              : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.04]'
-          }`}
-        >
-          <FileCode
-            className={`h-4 w-4 shrink-0 ${selected ? 'text-indigo-300' : 'text-zinc-500'}`}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm text-zinc-200">{result.data.test.title}</span>
-            <span className="text-xs text-zinc-500">
-              {result.data.test.steps.length} pasos · {selected ? 'en el panel' : 'ver en el panel'}
-            </span>
-          </span>
-          <span
-            className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] ${
-              selected ? 'bg-indigo-400/20 text-indigo-200' : 'bg-white/5 text-zinc-400'
-            }`}
-          >
-            v{version}
-          </span>
-        </button>
-      );
-    }
   }
 };
+
+const RepairReplyView = ({
+  reply,
+  selectedVersion,
+  onSelectVersion,
+}: SelectionProps & { reply: RepairReply }) => {
+  if (reply.phase === 'loading') {
+    return <PendingReply startedAt={reply.startedAt} label="Diagnosticando el fallo…" />;
+  }
+  const { result, version } = reply;
+  if (!result.ok) {
+    return <ErrorNotice error={result.error} />;
+  }
+
+  switch (result.data.status) {
+    case 'rejected':
+      return <RejectedNotice reason={result.data.reason} />;
+    case 'bug_report':
+      return (
+        <div className="space-y-3">
+          <DiagnosisNotice diagnosis={result.data.diagnosis} />
+          <BugReportCard report={result.data.report} diagnosis={result.data.diagnosis} />
+        </div>
+      );
+    case 'fixed':
+      return (
+        <div className="space-y-3">
+          <DiagnosisNotice diagnosis={result.data.diagnosis} />
+          {version !== null && (
+            <VersionCard
+              title={result.data.test.title}
+              stepCount={result.data.test.steps.length}
+              version={version}
+              selected={version === selectedVersion}
+              onSelect={onSelectVersion}
+            />
+          )}
+        </div>
+      );
+  }
+};
+
+const TurnView = ({ turn, ...selection }: SelectionProps & { turn: Turn }) =>
+  turn.kind === 'instruction' ? (
+    <>
+      <div className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-indigo-500/90 px-3.5 py-2 text-sm leading-relaxed text-white">
+        {turn.instruction}
+      </div>
+      <InstructionReplyView reply={turn.reply} {...selection} />
+    </>
+  ) : (
+    <>
+      <div className="ml-auto flex w-fit items-center gap-2 rounded-2xl rounded-br-md border border-indigo-400/30 bg-indigo-500/10 px-3.5 py-2 text-sm text-indigo-100">
+        <Wrench className="h-3.5 w-3.5 text-indigo-300" />
+        Diagnosticar y reparar v{turn.sourceVersion}
+      </div>
+      <RepairReplyView reply={turn.reply} {...selection} />
+    </>
+  );
 
 export const ConversationPanel = ({
   turns,
@@ -240,11 +284,8 @@ export const ConversationPanel = ({
 
         {turns.map((turn) => (
           <div key={turn.id} className="animate-fade-in space-y-3">
-            <div className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-indigo-500/90 px-3.5 py-2 text-sm leading-relaxed text-white">
-              {turn.instruction}
-            </div>
-            <Reply
-              reply={turn.reply}
+            <TurnView
+              turn={turn}
               selectedVersion={selectedVersion}
               onSelectVersion={onSelectVersion}
             />

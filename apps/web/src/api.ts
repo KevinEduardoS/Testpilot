@@ -3,6 +3,7 @@ import {
   appInfoSchema,
   generateTestResponseSchema,
   healthStatusSchema,
+  repairTestResponseSchema,
   runnerPingSchema,
   type ApiError,
   type AppInfo,
@@ -10,13 +11,16 @@ import {
   type ExecutionEvent,
   type GenerateTestRequest,
   type GenerateTestResponse,
+  type RepairTestRequest,
+  type RepairTestResponse,
 } from '@testpilot/shared';
 import { readExecutionEvents } from '@testpilot/shared/execution-stream';
+import type { ZodType } from 'zod';
 import { env } from './config';
 
 const REQUEST_TIMEOUT_MS = 5000;
-// La generación con IA puede tardar; el SDK de la API reintenta antes de rendirse.
-const GENERATE_TIMEOUT_MS = 180_000;
+// La generación y la reparación con IA pueden tardar; el SDK de la API reintenta antes de rendirse.
+const AI_TIMEOUT_MS = 180_000;
 // Incluye el arranque del navegador y el timeout de la prueba en el runner.
 const EXECUTE_TIMEOUT_MS = 150_000;
 
@@ -56,6 +60,7 @@ export const isRunnerUp = async (): Promise<boolean | null> => {
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError };
 export type GenerateResult = ApiResult<GenerateTestResponse>;
+export type RepairResult = ApiResult<RepairTestResponse>;
 
 const failure = (error: string, message: string): { ok: false; error: ApiError } => ({
   ok: false,
@@ -100,8 +105,12 @@ const post = async (
   }
 };
 
-export const generateTest = async (input: GenerateTestRequest): Promise<GenerateResult> => {
-  const result = await post('/api/tests/generate', input, GENERATE_TIMEOUT_MS);
+const postForResult = async <T>(
+  path: string,
+  input: unknown,
+  schema: ZodType<T>,
+): Promise<ApiResult<T>> => {
+  const result = await post(path, input, AI_TIMEOUT_MS);
   if (!result.ok) {
     return result;
   }
@@ -111,11 +120,17 @@ export const generateTest = async (input: GenerateTestRequest): Promise<Generate
   } catch (error) {
     return networkFailure(error);
   }
-  const parsed = generateTestResponseSchema.safeParse(body);
+  const parsed = schema.safeParse(body);
   return parsed.success
     ? { ok: true, data: parsed.data }
     : failure('invalid_response', 'La API devolvió una respuesta con un formato inesperado.');
 };
+
+export const generateTest = (input: GenerateTestRequest): Promise<GenerateResult> =>
+  postForResult('/api/tests/generate', input, generateTestResponseSchema);
+
+export const repairTest = (input: RepairTestRequest): Promise<RepairResult> =>
+  postForResult('/api/tests/repair', input, repairTestResponseSchema);
 
 // Ejecuta una prueba y entrega su progreso evento a evento. El último evento es siempre
 // "result" o "error", también cuando la API rechaza la petición o se pierde la conexión.

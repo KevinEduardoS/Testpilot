@@ -1,6 +1,17 @@
-import type { ExecutionEvent, ExecutionResult } from '@testpilot/shared';
+import {
+  MAX_ERROR_LENGTH,
+  MAX_PAGE_SNAPSHOT_LENGTH,
+  executionFailureSchema,
+  type ExecutionEvent,
+  type ExecutionResult,
+} from '@testpilot/shared';
 import { describe, expect, it } from 'vitest';
-import { applyExecutionEvent, startExecution, type ExecutionState } from './execution';
+import {
+  applyExecutionEvent,
+  startExecution,
+  toExecutionFailure,
+  type ExecutionState,
+} from './execution';
 
 const passed: ExecutionResult = {
   status: 'passed',
@@ -48,5 +59,28 @@ describe('applyExecutionEvent', () => {
   it('ignora eventos de paso tardíos tras terminar', () => {
     const done = apply([{ type: 'result', result: passed }]);
     expect(apply([{ type: 'step-begin', index: 0, title: 'tarde' }], done)).toBe(done);
+  });
+});
+
+describe('toExecutionFailure', () => {
+  it('no devuelve nada si la prueba pasó', () => {
+    expect(toExecutionFailure(passed)).toBeNull();
+  });
+
+  it('recorta la evidencia a los límites que acepta la API', () => {
+    const failure = toExecutionFailure({
+      ...passed,
+      status: 'failed',
+      error: 'e'.repeat(MAX_ERROR_LENGTH + 10),
+      steps: [{ title: 'paso', status: 'failed', durationMs: 5, error: 'falló' }],
+      screenshot: 'data:image/png;base64,AAAA',
+      pageSnapshot: 's'.repeat(MAX_PAGE_SNAPSHOT_LENGTH + 10),
+    });
+
+    expect(executionFailureSchema.safeParse(failure).success).toBe(true);
+    expect(failure).not.toHaveProperty('screenshot');
+    expect(failure?.steps).toEqual([
+      { title: 'paso', status: 'failed', durationMs: 5, error: 'falló' },
+    ]);
   });
 });

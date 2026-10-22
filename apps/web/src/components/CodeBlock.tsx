@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 const COPIED_FEEDBACK_MS = 2000;
 
-export const CopyButton = ({ text }: { text: string }) => {
+export const CopyButton = ({ text, label = 'Copiar' }: { text: string; label?: string }) => {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export const CopyButton = ({ text }: { text: string }) => {
       ) : (
         <Copy className="h-3.5 w-3.5" />
       )}
-      {copied ? 'Copiado' : 'Copiar'}
+      {copied ? 'Copiado' : label}
     </button>
   );
 };

@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   Terminal,
   TriangleAlert,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -83,10 +84,19 @@ type VersionViewProps = {
   execution: ExecutionState;
   // Solo una ejecución a la vez: el runner rechaza las simultáneas.
   executeDisabled: boolean;
+  repairDisabled: boolean;
   onExecute: () => void;
+  onRepair: () => void;
 };
 
-const VersionView = ({ version, execution, executeDisabled, onExecute }: VersionViewProps) => {
+const VersionView = ({
+  version,
+  execution,
+  executeDisabled,
+  repairDisabled,
+  onExecute,
+  onRepair,
+}: VersionViewProps) => {
   const { test } = version;
   // Se monta con key por versión: al cambiar, abre su ejecución si la tiene o el script.
   const [tab, setTab] = useState<Tab>(execution.phase === 'idle' ? 'script' : 'run');
@@ -106,6 +116,12 @@ const VersionView = ({ version, execution, executeDisabled, onExecute }: Version
             <span className="rounded-md bg-indigo-400/15 px-1.5 py-0.5 font-mono text-[11px] text-indigo-200">
               v{version.number}
             </span>
+            {version.repairedFrom !== null && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-[11px] font-medium text-indigo-200">
+                <Wrench className="h-3 w-3" />
+                Reparación de v{version.repairedFrom}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
               <ShieldCheck className="h-3 w-3" />
               Validado por la política de seguridad
@@ -173,7 +189,9 @@ const VersionView = ({ version, execution, executeDisabled, onExecute }: Version
         {tab === 'script' && <CopyButton text={test.script} />}
       </div>
 
-      {tab === 'run' && <ExecutionView state={execution} />}
+      {tab === 'run' && (
+        <ExecutionView state={execution} repairDisabled={repairDisabled} onRepair={onRepair} />
+      )}
       {tab === 'script' && (
         <div className="bg-black/30">
           <CodeBlock code={test.script} />
@@ -207,32 +225,17 @@ const VersionView = ({ version, execution, executeDisabled, onExecute }: Version
   );
 };
 
-type WorkspaceProps = {
+type WorkspaceProps = Omit<VersionViewProps, 'version'> & {
   version: Version | undefined;
   generating: boolean;
-  execution: ExecutionState;
-  executeDisabled: boolean;
-  onExecute: () => void;
 };
 
-export const Workspace = ({
-  version,
-  generating,
-  execution,
-  executeDisabled,
-  onExecute,
-}: WorkspaceProps) => (
+export const Workspace = ({ version, generating, ...viewProps }: WorkspaceProps) => (
   <section className="card min-h-[520px] overflow-hidden lg:h-[calc(100vh-15rem)] lg:min-h-[560px] lg:overflow-y-auto">
     {version === undefined ? (
       <IdleState generating={generating} />
     ) : (
-      <VersionView
-        key={version.number}
-        version={version}
-        execution={execution}
-        executeDisabled={executeDisabled}
-        onExecute={onExecute}
-      />
+      <VersionView key={version.number} version={version} {...viewProps} />
     )}
   </section>
 );

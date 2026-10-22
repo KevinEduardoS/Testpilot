@@ -44,7 +44,7 @@ const fakeRunner = async (status: number, body: string, contentType = 'applicati
   const { port } = server.address() as AddressInfo;
   const execute = createRunnerClient({
     runnerUrl: `http://127.0.0.1:${port}`,
-    internalApiKey: KEY,
+    runnerHeaders: async () => ({ 'x-internal-api-key': KEY }),
     runTimeoutMs: 1000,
   });
   return { received, execute };
@@ -132,7 +132,7 @@ describe('createRunnerClient', () => {
   it('responde 503 si el runner no está disponible', async () => {
     const execute = createRunnerClient({
       runnerUrl: 'http://127.0.0.1:9',
-      internalApiKey: KEY,
+      runnerHeaders: async () => ({ 'x-internal-api-key': KEY }),
       runTimeoutMs: 1000,
     });
     await expectHttpError(run(execute), 503, 'runner_unavailable');

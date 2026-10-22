@@ -70,7 +70,7 @@ const setup = async ({
     webOrigin: 'http://localhost:5173',
     // Puerto 9 (discard): nada escucha ahí, así que el runner aparece caído.
     runnerUrl: 'http://127.0.0.1:9',
-    internalApiKey: 'k'.repeat(32),
+    runnerHeaders: async () => ({ 'x-internal-api-key': 'k'.repeat(32) }),
     rateLimitPerHour,
     trustProxy,
     aiProvider: 'demo',

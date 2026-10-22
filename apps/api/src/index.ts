@@ -6,6 +6,7 @@ import { createDemoGenerator } from './demo-generator.js';
 import { withDemoFallback } from './demo-fallback.js';
 import { createDemoRepairer } from './demo-repairer.js';
 import { loadPrompt } from './prompt-loader.js';
+import { createRunnerHeaders } from './runner-auth.js';
 import { createRunnerClient } from './runner-client.js';
 import { createTestGenerator } from './test-generator.js';
 import { createTestRepairer } from './test-repairer.js';
@@ -39,10 +40,16 @@ const createAiServices = () => {
   };
 };
 
+const runnerHeaders = createRunnerHeaders({
+  auth: env.RUNNER_AUTH,
+  internalApiKey: env.INTERNAL_API_KEY,
+  runnerUrl: env.RUNNER_URL,
+});
+
 const app = await buildApp({
   webOrigin: env.WEB_ORIGIN,
   runnerUrl: env.RUNNER_URL,
-  internalApiKey: env.INTERNAL_API_KEY,
+  runnerHeaders,
   rateLimitPerHour: env.RATE_LIMIT_PER_HOUR,
   trustProxy: env.TRUST_PROXY,
   aiProvider: env.AI_PROVIDER,
@@ -50,7 +57,7 @@ const app = await buildApp({
   ...createAiServices(),
   executeTest: createRunnerClient({
     runnerUrl: env.RUNNER_URL,
-    internalApiKey: env.INTERNAL_API_KEY,
+    runnerHeaders,
     runTimeoutMs: env.RUN_TIMEOUT_MS,
   }),
 });

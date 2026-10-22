@@ -20,11 +20,13 @@ import { checkScriptPolicy } from '@testpilot/shared/script-policy';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import { ZodError } from 'zod';
 import { HttpError } from './errors.js';
+import type { RunnerHeaders } from './runner-auth.js';
 import type { TestExecutor } from './runner-client.js';
 import type { TestGenerator } from './test-generator.js';
 import type { TestRepairer } from './test-repairer.js';
 
-const RUNNER_PING_TIMEOUT_MS = 3000;
+// Holgado para el arranque en frío del runner en Cloud Run.
+const RUNNER_PING_TIMEOUT_MS = 10_000;
 
 const assertSafeScript = (script: string, allowedDomains: AllowedDomains) => {
   const policy = checkScriptPolicy(script, { allowedDomains });
@@ -41,7 +43,7 @@ const assertSafeScript = (script: string, allowedDomains: AllowedDomains) => {
 export type AppOptions = {
   webOrigin: string;
   runnerUrl: string;
-  internalApiKey: string;
+  runnerHeaders: RunnerHeaders;
   rateLimitPerHour: number;
   // Número de proxies de confianza; 0 usa la IP de la conexión.
   trustProxy: number;
@@ -109,7 +111,7 @@ export const buildApp = async (options: AppOptions) => {
 
     try {
       const response = await fetch(`${options.runnerUrl}/health`, {
-        headers: { 'x-internal-api-key': options.internalApiKey },
+        headers: await options.runnerHeaders(),
         signal: AbortSignal.timeout(RUNNER_PING_TIMEOUT_MS),
       });
       result = response.ok

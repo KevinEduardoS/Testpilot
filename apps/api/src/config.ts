@@ -33,6 +33,8 @@ const baseSchema = z.object({
   RUNNER_URL: z.url().default('http://localhost:3002'),
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
   INTERNAL_API_KEY: z.string().min(32, 'debe tener al menos 32 caracteres'),
+  // google-id-token: el runner es un servicio privado de Cloud Run (ver docs/deploy.md).
+  RUNNER_AUTH: z.enum(['internal-key', 'google-id-token']).default('internal-key'),
   RATE_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
   // Proxies de confianza delante de la API (por ejemplo, el de la plataforma de despliegue).
   // Con 0 se ignora X-Forwarded-For; sin el valor correcto, los límites por visitante se

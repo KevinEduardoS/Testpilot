@@ -1,13 +1,14 @@
 import { apiErrorSchema, type ExecutionEvent } from '@testpilot/shared';
 import { readExecutionEvents } from '@testpilot/shared/execution-stream';
 import { HttpError } from './errors.js';
+import type { RunnerHeaders } from './runner-auth.js';
 
 // Margen sobre el timeout de la prueba para el arranque del navegador y la respuesta del runner.
 const RUNNER_OVERHEAD_MS = 30_000;
 
 export type RunnerClientOptions = {
   runnerUrl: string;
-  internalApiKey: string;
+  runnerHeaders: RunnerHeaders;
   runTimeoutMs: number;
 };
 
@@ -20,13 +21,14 @@ export type TestExecutor = (
 ) => Promise<AsyncIterable<ExecutionEvent>>;
 
 export const createRunnerClient =
-  ({ runnerUrl, internalApiKey, runTimeoutMs }: RunnerClientOptions): TestExecutor =>
+  ({ runnerUrl, runnerHeaders, runTimeoutMs }: RunnerClientOptions): TestExecutor =>
   async (script, signal) => {
+    const headers = await runnerHeaders();
     let response: Response;
     try {
       response = await fetch(`${runnerUrl}/execute`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-internal-api-key': internalApiKey },
+        headers: { ...headers, 'content-type': 'application/json' },
         body: JSON.stringify({ script }),
         signal: AbortSignal.any([signal, AbortSignal.timeout(runTimeoutMs + RUNNER_OVERHEAD_MS)]),
       });

@@ -27,24 +27,38 @@ export const SUPPORTED_MODELS = [
   'claude-fable-5-1',
 ] as const;
 
-const envSchema = z.object({
+const baseSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   RUNNER_URL: z.url().default('http://localhost:3002'),
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
   INTERNAL_API_KEY: z.string().min(32, 'debe tener al menos 32 caracteres'),
-  ANTHROPIC_API_KEY: z.string().min(1, 'es obligatoria'),
-  ANTHROPIC_MODEL: z.enum(SUPPORTED_MODELS).default('claude-opus-5-5'),
-  AI_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
-  AI_MAX_TOKENS: z.coerce.number().int().positive().default(16_000),
-  AI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
-  AI_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   RATE_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(10),
   RUN_TIMEOUT_MS: z.coerce.number().int().positive().max(300_000).default(60_000),
 });
 
+// Las variables de Claude solo se exigen cuando el proveedor es anthropic.
+const aiSchema = z.discriminatedUnion('AI_PROVIDER', [
+  z.object({
+    AI_PROVIDER: z.literal('anthropic'),
+    ANTHROPIC_API_KEY: z.string().min(1, 'es obligatoria con AI_PROVIDER=anthropic'),
+    ANTHROPIC_MODEL: z.enum(SUPPORTED_MODELS).default('claude-opus-5-5'),
+    AI_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
+    AI_MAX_TOKENS: z.coerce.number().int().positive().default(16_000),
+    AI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
+    AI_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  }),
+  z.object({ AI_PROVIDER: z.literal('demo') }),
+]);
+
+const envSchema = z.intersection(baseSchema, aiSchema);
+
 export type Env = z.infer<typeof envSchema>;
 
-const parsed = envSchema.safeParse({ ...readRootEnvFile(), ...process.env });
+const parsed = envSchema.safeParse({
+  AI_PROVIDER: 'anthropic',
+  ...readRootEnvFile(),
+  ...process.env,
+});
 
 if (!parsed.success) {
   const issues = parsed.error.issues

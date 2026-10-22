@@ -1,33 +1,14 @@
-import { Globe, LoaderCircle, Sparkles } from 'lucide-react';
+import { EXAMPLES } from '@testpilot/shared';
+import { FlaskConical, Globe, LoaderCircle, Sparkles } from 'lucide-react';
 import type { FormEvent, KeyboardEvent } from 'react';
 
 export const MAX_INSTRUCTION_LENGTH = 1000;
-
-export const EXAMPLES = [
-  {
-    label: 'Login con credenciales inválidas',
-    instruction:
-      'Inicia sesión con un usuario inválido y verifica que aparezca el mensaje de error.',
-    baseUrl: 'https://www.saucedemo.com',
-  },
-  {
-    label: 'Añadir producto al carrito',
-    instruction:
-      'Inicia sesión con el usuario de demostración, añade la mochila al carrito y verifica que el contador del carrito muestre 1.',
-    baseUrl: 'https://www.saucedemo.com',
-  },
-  {
-    label: 'Validación de formulario',
-    instruction:
-      'Abre el formulario de login, envíalo vacío y verifica que se muestre el error de usuario requerido.',
-    baseUrl: 'https://www.saucedemo.com',
-  },
-] as const;
 
 type ComposerProps = {
   instruction: string;
   baseUrl: string;
   loading: boolean;
+  demoMode: boolean;
   onInstructionChange: (value: string) => void;
   onBaseUrlChange: (value: string) => void;
   onSubmit: () => void;
@@ -37,6 +18,7 @@ export const Composer = ({
   instruction,
   baseUrl,
   loading,
+  demoMode,
   onInstructionChange,
   onBaseUrlChange,
   onSubmit,
@@ -59,6 +41,16 @@ export const Composer = ({
 
   return (
     <div className="space-y-4">
+      {demoMode && (
+        <div className="flex gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] p-4 text-sm">
+          <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+          <p className="leading-relaxed text-amber-100/80">
+            <span className="font-medium text-amber-200">Modo demo.</span> La IA no está
+            configurada: elige uno de los ejemplos. Sus scripts son predefinidos, pero la ejecución
+            en el navegador es real.
+          </p>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="card p-5">
         <div className="mb-2 flex items-center justify-between">
           <label htmlFor="instruction" className="text-sm font-medium text-zinc-200">

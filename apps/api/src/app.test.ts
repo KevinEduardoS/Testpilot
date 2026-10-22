@@ -37,6 +37,7 @@ const setup = async (
     runnerUrl: 'http://127.0.0.1:9',
     internalApiKey: 'k'.repeat(32),
     rateLimitPerHour,
+    aiProvider: 'demo',
     generateTest,
     executeTest,
     logger: false,
@@ -142,6 +143,14 @@ describe('POST /api/tests/execute', () => {
     const response = await execute(app, { script: validScript });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ error: 'runner_busy', message: 'ocupado' });
+  });
+});
+
+describe('GET /api/info', () => {
+  it('informa el proveedor de IA', async () => {
+    const app = await setup();
+    const response = await app.inject({ method: 'GET', url: '/api/info' });
+    expect(response.json()).toEqual({ aiProvider: 'demo' });
   });
 });
 

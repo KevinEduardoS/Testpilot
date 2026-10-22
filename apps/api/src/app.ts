@@ -1,12 +1,14 @@
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import {
+  appInfoSchema,
   executeTestRequestSchema,
   executionResultSchema,
   generateTestRequestSchema,
   generateTestResponseSchema,
   healthStatusSchema,
   runnerPingSchema,
+  type AiProvider,
   type ApiError,
   type RunnerPing,
 } from '@testpilot/shared';
@@ -24,6 +26,7 @@ export type AppOptions = {
   runnerUrl: string;
   internalApiKey: string;
   rateLimitPerHour: number;
+  aiProvider: AiProvider;
   generateTest: TestGenerator;
   executeTest: TestExecutor;
   logger?: FastifyServerOptions['logger'];
@@ -69,6 +72,8 @@ export const buildApp = async (options: AppOptions) => {
   app.get('/health', async () =>
     healthStatusSchema.parse({ status: 'ok', service: 'api', timestamp: new Date().toISOString() }),
   );
+
+  app.get('/api/info', async () => appInfoSchema.parse({ aiProvider: options.aiProvider }));
 
   app.get('/api/ping', async (request, reply) => {
     let result: RunnerPing;

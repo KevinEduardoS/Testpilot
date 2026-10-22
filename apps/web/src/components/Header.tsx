@@ -32,9 +32,9 @@ export const Logo = () => (
   </svg>
 );
 
-type HeaderProps = { api: ServiceStatus; runner: ServiceStatus };
+type HeaderProps = { api: ServiceStatus; runner: ServiceStatus; demoMode: boolean };
 
-export const Header = ({ api, runner }: HeaderProps) => (
+export const Header = ({ api, runner, demoMode }: HeaderProps) => (
   <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-zinc-950/70 backdrop-blur-md">
     <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
       <div className="flex items-center gap-2.5">
@@ -43,6 +43,14 @@ export const Header = ({ api, runner }: HeaderProps) => (
         <span className="rounded-md border border-indigo-400/20 bg-indigo-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">
           Beta
         </span>
+        {demoMode && (
+          <span
+            className="rounded-md border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300"
+            title="Sin IA configurada: solo los ejemplos predefinidos"
+          >
+            Modo demo
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <StatusPill name="API" status={api} />

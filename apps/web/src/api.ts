@@ -1,10 +1,12 @@
 import {
   apiErrorSchema,
+  appInfoSchema,
   executionResultSchema,
   generateTestResponseSchema,
   healthStatusSchema,
   runnerPingSchema,
   type ApiError,
+  type AppInfo,
   type ExecuteTestRequest,
   type ExecutionResult,
   type GenerateTestRequest,
@@ -32,6 +34,14 @@ export const isApiUp = async (): Promise<boolean> => {
     return true;
   } catch {
     return false;
+  }
+};
+
+export const getAppInfo = async (): Promise<AppInfo | null> => {
+  try {
+    return appInfoSchema.parse(await fetchJson('/api/info'));
+  } catch {
+    return null;
   }
 };
 

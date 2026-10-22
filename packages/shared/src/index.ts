@@ -75,3 +75,37 @@ export const executionResultSchema = z.object({
 });
 
 export type ExecutionResult = z.infer<typeof executionResultSchema>;
+
+export const aiProviderSchema = z.enum(['anthropic', 'demo']);
+
+export type AiProvider = z.infer<typeof aiProviderSchema>;
+
+export const appInfoSchema = z.object({ aiProvider: aiProviderSchema });
+
+export type AppInfo = z.infer<typeof appInfoSchema>;
+
+// Ejemplos de la web. En modo demo son las únicas instrucciones que la API sabe responder.
+export const EXAMPLES = [
+  {
+    id: 'invalid-login',
+    label: 'Login con credenciales inválidas',
+    instruction: 'Inicia sesión con un usuario inválido y verifica que aparezca el mensaje de error.',
+    baseUrl: 'https://www.saucedemo.com',
+  },
+  {
+    id: 'add-to-cart',
+    label: 'Añadir producto al carrito',
+    instruction:
+      'Inicia sesión con el usuario de demostración, añade la mochila al carrito y verifica que el contador del carrito muestre 1.',
+    baseUrl: 'https://www.saucedemo.com',
+  },
+  {
+    id: 'empty-form',
+    label: 'Validación de formulario',
+    instruction:
+      'Abre el formulario de login, envíalo vacío y verifica que se muestre el error de usuario requerido.',
+    baseUrl: 'https://www.saucedemo.com',
+  },
+] as const;
+
+export type ExampleId = (typeof EXAMPLES)[number]['id'];

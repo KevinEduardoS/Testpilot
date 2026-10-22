@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { executeTest, generateTest } from './api';
+import type { AiProvider } from '@testpilot/shared';
+import { useEffect, useRef, useState } from 'react';
+import { executeTest, generateTest, getAppInfo } from './api';
 import { Composer } from './components/Composer';
 import type { ExecutionState } from './components/ExecutionView';
 import { Header } from './components/Header';
@@ -13,6 +14,15 @@ export default function App() {
   const [state, setState] = useState<GenerationState>({ phase: 'idle' });
   const [execution, setExecution] = useState<ExecutionState>({ phase: 'idle' });
   const resultRef = useRef<HTMLDivElement>(null);
+  const [aiProvider, setAiProvider] = useState<AiProvider | null>(null);
+
+  // Se consulta cada vez que la API pasa a estar disponible.
+  useEffect(() => {
+    if (status.api === 'up') {
+      void getAppInfo().then((info) => setAiProvider(info?.aiProvider ?? null));
+    }
+  }, [status.api]);
+  const demoMode = aiProvider === 'demo';
 
   const submit = async () => {
     setState({ phase: 'loading', startedAt: Date.now() });
@@ -40,7 +50,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Header api={status.api} runner={status.runner} />
+      <Header api={status.api} runner={status.runner} demoMode={demoMode} />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-10 sm:px-6 sm:pt-14">
         <div className="mb-10 max-w-3xl">
@@ -62,6 +72,7 @@ export default function App() {
               instruction={instruction}
               baseUrl={baseUrl}
               loading={state.phase === 'loading'}
+              demoMode={demoMode}
               onInstructionChange={setInstruction}
               onBaseUrlChange={setBaseUrl}
               onSubmit={() => void submit()}

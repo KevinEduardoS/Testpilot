@@ -196,12 +196,15 @@ export const ConversationPanel = ({
   onSelectVersion,
   onReset,
 }: ConversationPanelProps) => {
-  const threadEnd = useRef<HTMLDivElement>(null);
+  const thread = useRef<HTMLDivElement>(null);
   const started = turns.length > 0;
   const canSend = draft.trim().length > 0 && !busy;
 
+  // Solo se desplaza el hilo: scrollIntoView movería también la página y la cabecera fija
+  // taparía el título.
   useEffect(() => {
-    threadEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const element = thread.current;
+    element?.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
   }, [turns]);
 
   const send = () => {
@@ -239,7 +242,7 @@ export const ConversationPanel = ({
         )}
       </div>
 
-      <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+      <div ref={thread} className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
         {demoMode && (
           <div className="flex gap-3 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] p-3.5 text-sm">
             <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
@@ -291,7 +294,6 @@ export const ConversationPanel = ({
             />
           </div>
         ))}
-        <div ref={threadEnd} />
       </div>
 
       <form onSubmit={handleSubmit} className="border-t border-white/[0.06] p-4">

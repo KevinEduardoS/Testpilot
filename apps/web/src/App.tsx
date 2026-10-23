@@ -36,6 +36,8 @@ export default function App() {
   const nextTurnId = useRef(1);
   // Cambia al empezar una conversación nueva: las respuestas de la anterior se descartan.
   const conversationId = useRef(0);
+  // Ejecución en curso: se cancela al empezar otra conversación para liberar el runner.
+  const runningExecution = useRef<AbortController | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
 
   // Un enlace directo a una sección (#seguridad) llega antes de que React la cree: el
@@ -153,19 +155,30 @@ export default function App() {
     const conversation = conversationId.current;
     setExecutions((previous) => ({ ...previous, [number]: startExecution(Date.now()) }));
 
-    await streamExecution({ script: selected.test.script }, (event) => {
-      if (conversation !== conversationId.current) {
-        return;
-      }
-      setExecutions((previous) => ({
-        ...previous,
-        [number]: applyExecutionEvent(previous[number] ?? startExecution(Date.now()), event),
-      }));
-    });
+    const abort = new AbortController();
+    runningExecution.current = abort;
+    await streamExecution(
+      { script: selected.test.script },
+      (event) => {
+        if (conversation !== conversationId.current) {
+          return;
+        }
+        setExecutions((previous) => ({
+          ...previous,
+          [number]: applyExecutionEvent(previous[number] ?? startExecution(Date.now()), event),
+        }));
+      },
+      abort.signal,
+    );
+    if (runningExecution.current === abort) {
+      runningExecution.current = null;
+    }
   };
 
   const reset = () => {
     conversationId.current += 1;
+    runningExecution.current?.abort();
+    runningExecution.current = null;
     setTurns([]);
     setSelectedVersion(null);
     setExecutions({});

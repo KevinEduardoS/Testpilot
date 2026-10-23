@@ -89,13 +89,18 @@ const post = async (
   path: string,
   input: unknown,
   timeoutMs: number,
+  // Cancela la petición, también la lectura de una respuesta en streaming.
+  signal?: AbortSignal,
 ): Promise<{ ok: true; response: Response } | { ok: false; error: ApiError }> => {
   try {
     const response = await fetch(`${env.VITE_API_URL}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal:
+        signal === undefined
+          ? AbortSignal.timeout(timeoutMs)
+          : AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
     });
     return response.ok
       ? { ok: true, response }
@@ -134,11 +139,13 @@ export const repairTest = (input: RepairTestRequest): Promise<RepairResult> =>
 
 // Ejecuta una prueba y entrega su progreso evento a evento. El último evento es siempre
 // "result" o "error", también cuando la API rechaza la petición o se pierde la conexión.
+// Al abortar, la API detecta la desconexión y detiene el navegador en el runner.
 export const streamExecution = async (
   input: ExecuteTestRequest,
   onEvent: (event: ExecutionEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> => {
-  const result = await post('/api/tests/execute', input, EXECUTE_TIMEOUT_MS);
+  const result = await post('/api/tests/execute', input, EXECUTE_TIMEOUT_MS, signal);
   if (!result.ok) {
     onEvent({ type: 'error', error: result.error });
     return;

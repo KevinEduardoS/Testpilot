@@ -2,7 +2,10 @@ import type { AppInfo } from '@testpilot/shared';
 import { useEffect, useRef, useState } from 'react';
 import { generateTest, getAppInfo, repairTest, streamExecution } from './api';
 import { ConversationPanel } from './components/ConversationPanel';
-import { Header } from './components/Header';
+import { Header, Logo } from './components/Header';
+import { Hero } from './components/landing/Hero';
+import { Reveal } from './components/landing/Reveal';
+import { HowItWorks, Security, TechStack } from './components/landing/Sections';
 import { Workspace } from './components/Workspace';
 import {
   buildContext,
@@ -34,6 +37,15 @@ export default function App() {
   // Cambia al empezar una conversación nueva: las respuestas de la anterior se descartan.
   const conversationId = useRef(0);
   const workspaceRef = useRef<HTMLDivElement>(null);
+
+  // Un enlace directo a una sección (#seguridad) llega antes de que React la cree: el
+  // navegador no encuentra el ancla, así que se desplaza aquí al montar.
+  useEffect(() => {
+    const section = decodeURIComponent(window.location.hash.slice(1));
+    if (section !== '') {
+      document.getElementById(section)?.scrollIntoView();
+    }
+  }, []);
 
   // Se consulta cada vez que la API pasa a estar disponible.
   useEffect(() => {
@@ -168,51 +180,66 @@ export default function App() {
     <div className="flex min-h-screen flex-col">
       <Header api={status.api} runner={status.runner} demoMode={info?.aiProvider === 'demo'} />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-10 pt-8 sm:px-6">
-        <div className="mb-6">
-          <h1 className="text-balance text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            Describe el caso. TestPilot escribe la prueba.
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-400">
-            Convierte instrucciones en lenguaje natural en scripts de Playwright, ejecútalos en un
-            navegador real y, si fallan, deja que la IA corrija la prueba o redacte el reporte del
-            bug.
-          </p>
-        </div>
+      <main className="flex-1">
+        <Hero />
 
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-          <ConversationPanel
-            turns={turns}
-            selectedVersion={selectedVersion}
-            demoMode={info?.aiProvider === 'demo'}
-            allowedDomains={info?.allowedDomains ?? null}
-            draft={draft}
-            baseUrl={baseUrl}
-            busy={generating}
-            onDraftChange={setDraft}
-            onBaseUrlChange={setBaseUrl}
-            onSend={(instruction, url) => void send(instruction, url)}
-            onSelectVersion={setSelectedVersion}
-            onReset={reset}
-          />
-          <div ref={workspaceRef} className="scroll-mt-20">
-            <Workspace
-              version={selected}
-              generating={generating}
-              execution={selectedExecution}
-              executeDisabled={executing}
-              repairDisabled={generating || executing}
-              onExecute={() => void execute()}
-              onRepair={() => void repair()}
+        <section id="probar" className="mx-auto w-full max-w-7xl px-4 pb-24 pt-4 sm:px-6">
+          <Reveal className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="section-eyebrow">Pruébalo</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                Elige un ejemplo y ejecútalo en Chromium
+              </h2>
+            </div>
+            <p className="max-w-md text-sm leading-relaxed text-zinc-400">
+              Los dos últimos ejemplos fallan a propósito: uno por un selector y otro por un bug
+              real del sitio. Pulsa «Diagnosticar y reparar» para ver la diferencia.
+            </p>
+          </Reveal>
+
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+            <ConversationPanel
+              turns={turns}
+              selectedVersion={selectedVersion}
+              demoMode={info?.aiProvider === 'demo'}
+              allowedDomains={info?.allowedDomains ?? null}
+              draft={draft}
+              baseUrl={baseUrl}
+              busy={generating}
+              onDraftChange={setDraft}
+              onBaseUrlChange={setBaseUrl}
+              onSend={(instruction, url) => void send(instruction, url)}
+              onSelectVersion={setSelectedVersion}
+              onReset={reset}
             />
+            <div ref={workspaceRef} className="scroll-mt-20">
+              <Workspace
+                version={selected}
+                generating={generating}
+                execution={selectedExecution}
+                executeDisabled={executing}
+                repairDisabled={generating || executing}
+                onExecute={() => void execute()}
+                onRepair={() => void repair()}
+              />
+            </div>
           </div>
-        </div>
+        </section>
+
+        <TechStack />
+        <HowItWorks />
+        <Security />
       </main>
 
       <footer className="border-t border-white/[0.06]">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 text-xs text-zinc-600 sm:px-6">
-          <span>TestPilot</span>
-          <span>Playwright · Claude · TypeScript</span>
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-8 text-xs text-zinc-500 sm:flex-row sm:px-6">
+          <span className="flex items-center gap-2">
+            <Logo />
+            TestPilot · pruebas end-to-end con IA
+          </span>
+          <a href="#probar" className="transition hover:text-zinc-300">
+            Volver a la demo ↑
+          </a>
         </div>
       </footer>
     </div>

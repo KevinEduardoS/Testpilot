@@ -1,4 +1,11 @@
 import type { ServiceStatus } from '../hooks/useServiceStatus';
+import { ScrollProgress } from './landing/ScrollProgress';
+
+const NAV_LINKS = [
+  { href: '#probar', label: 'Demo' },
+  { href: '#como-funciona', label: 'Cómo funciona' },
+  { href: '#seguridad', label: 'Seguridad' },
+];
 
 const statusStyles: Record<ServiceStatus, { dot: string; label: string }> = {
   checking: { dot: 'bg-amber-400 animate-pulse', label: 'verificando' },
@@ -36,8 +43,9 @@ type HeaderProps = { api: ServiceStatus; runner: ServiceStatus; demoMode: boolea
 
 export const Header = ({ api, runner, demoMode }: HeaderProps) => (
   <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-zinc-950/70 backdrop-blur-md">
+    <ScrollProgress />
     <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
-      <div className="flex items-center gap-2.5">
+      <a href="#" className="flex items-center gap-2.5" aria-label="TestPilot, volver al inicio">
         <Logo />
         <span className="text-[15px] font-semibold tracking-tight text-white">TestPilot</span>
         <span className="hidden rounded-md border border-indigo-400/20 sm:inline bg-indigo-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">
@@ -51,7 +59,18 @@ export const Header = ({ api, runner, demoMode }: HeaderProps) => (
             Modo demo
           </span>
         )}
-      </div>
+      </a>
+      <nav className="hidden items-center gap-1 md:flex" aria-label="Secciones">
+        {NAV_LINKS.map(({ href, label }) => (
+          <a
+            key={href}
+            href={href}
+            className="rounded-md px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-white/5 hover:text-white"
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
       <div className="flex items-center gap-2">
         <StatusPill name="API" status={api} />
         <StatusPill name="Runner" status={runner} />

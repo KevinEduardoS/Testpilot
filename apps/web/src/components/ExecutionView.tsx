@@ -24,7 +24,7 @@ const statusBanner: Record<
   passed: {
     icon: CircleCheck,
     title: 'La prueba pasó',
-    style: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
+    style: 'animate-pulse-ring border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
   },
   failed: {
     icon: CircleX,

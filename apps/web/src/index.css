@@ -9,18 +9,36 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  html {
+    /* Deja sitio a la cabecera fija al saltar a una sección. */
+    scroll-padding-top: 4.5rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
   body {
     @apply min-h-screen bg-zinc-950 font-sans text-zinc-300;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgb(99 102 241 / 0.12), transparent),
-      radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
-    background-size:
-      100% 100%,
-      24px 24px;
+    background-image: radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 
   ::selection {
     @apply bg-indigo-500/30 text-white;
+  }
+
+  /* Quien pide menos movimiento ve el estado final sin animaciones. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -31,5 +49,40 @@
 
   .field {
     @apply w-full rounded-lg border border-white/10 bg-zinc-950/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 transition focus:border-indigo-400/60 focus:outline-none focus:ring-4 focus:ring-indigo-500/10;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 bg-clip-text text-transparent;
+  }
+
+  .section-eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300;
+  }
+
+  /* Entrada al hacer scroll: Reveal añade is-visible cuando el bloque entra en pantalla. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition:
+      opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@layer components {
+  /* Línea que se dibuja de izquierda a derecha al entrar en pantalla. */
+  .reveal .draw-line {
+    transform: scaleX(0);
+    transition: transform 1400ms cubic-bezier(0.22, 1, 0.36, 1) 300ms;
+  }
+
+  .reveal.is-visible .draw-line {
+    transform: scaleX(1);
   }
 }

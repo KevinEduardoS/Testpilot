@@ -1,50 +1,19 @@
 import type { ExecutionResult } from '@testpilot/shared';
-import {
-  CircleAlert,
-  CircleCheck,
-  CircleSlash,
-  CircleX,
-  Clock,
-  ListTree,
-  LoaderCircle,
-  Timer,
-  Wrench,
-  type LucideIcon,
-} from 'lucide-react';
+import { Check, ChevronRight, LoaderCircle, Minus, Wrench, X } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { ExecutionState, LiveStep } from '../execution';
+import { formatDuration } from '../format';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 
-const formatDuration = (ms: number) =>
-  ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
-
-const statusBanner: Record<
-  ExecutionResult['status'],
-  { icon: LucideIcon; title: string; style: string }
-> = {
-  passed: {
-    icon: CircleCheck,
-    title: 'La prueba pasó',
-    style: 'animate-pulse-ring border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
-  },
-  failed: {
-    icon: CircleX,
-    title: 'La prueba falló',
-    style: 'border-rose-400/20 bg-rose-400/10 text-rose-300',
-  },
-  timedOut: {
-    icon: Timer,
-    title: 'Se agotó el tiempo de la prueba',
-    style: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
-  },
-  interrupted: {
-    icon: CircleSlash,
-    title: 'La ejecución se interrumpió',
-    style: 'border-zinc-400/20 bg-zinc-400/10 text-zinc-300',
-  },
+const STATUS: Record<ExecutionResult['status'], { label: string; dot: string; text: string }> = {
+  passed: { label: 'Pasó', dot: 'bg-emerald-500', text: 'text-emerald-400' },
+  failed: { label: 'Falló', dot: 'bg-red-500', text: 'text-red-400' },
+  timedOut: { label: 'Tiempo agotado', dot: 'bg-amber-500', text: 'text-amber-400' },
+  interrupted: { label: 'Interrumpida', dot: 'bg-neutral-500', text: 'text-neutral-400' },
 };
 
-const ErrorBox = ({ message }: { message: string }) => (
-  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg border border-rose-400/15 bg-rose-950/20 p-3 font-mono text-xs leading-relaxed text-rose-200/90">
+const ErrorLog = ({ message }: { message: string }) => (
+  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap border-l-2 border-red-500/60 bg-neutral-950 py-2 pl-3 pr-2 font-mono text-2xs leading-5 text-neutral-300">
     {message}
   </pre>
 );
@@ -52,50 +21,54 @@ const ErrorBox = ({ message }: { message: string }) => (
 const StepIcon = ({ status }: { status: LiveStep['status'] }) => {
   switch (status) {
     case 'running':
-      return <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-indigo-400" />;
+      return <LoaderCircle className="h-3.5 w-3.5 animate-spin text-neutral-300" />;
     case 'passed':
-      return <CircleCheck className="h-4 w-4 shrink-0 text-emerald-400" />;
+      return <Check className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.5} />;
     case 'failed':
-      return <CircleX className="h-4 w-4 shrink-0 text-rose-400" />;
+      return <X className="h-3.5 w-3.5 text-red-500" strokeWidth={2.5} />;
   }
 };
 
-const StepList = ({ steps }: { steps: LiveStep[] }) => (
-  <ol className="space-y-2">
+const StepLog = ({ steps }: { steps: LiveStep[] }) => (
+  <ol className="divide-y divide-neutral-800/70 rounded-md border border-neutral-800">
     {steps.map((step, index) => (
-      <li key={`${index}-${step.title}`} className="animate-fade-in">
+      <li key={`${index}-${step.title}`} className="animate-fade-in px-3 py-2">
         <div className="flex items-center gap-3 text-sm">
+          <span className="w-5 font-mono text-2xs tabular-nums text-neutral-600">
+            {String(index + 1).padStart(2, '0')}
+          </span>
           <StepIcon status={step.status} />
-          <span className={`flex-1 ${step.status === 'running' ? 'text-white' : 'text-zinc-300'}`}>
+          <span
+            className={`flex-1 ${step.status === 'running' ? 'text-neutral-100' : 'text-neutral-300'}`}
+          >
             {step.title}
           </span>
-          {step.durationMs !== null && (
-            <span className="font-mono text-[11px] tabular-nums text-zinc-500">
-              {formatDuration(step.durationMs)}
-            </span>
-          )}
+          <span className="font-mono text-2xs tabular-nums text-neutral-500">
+            {step.durationMs === null ? '…' : formatDuration(step.durationMs)}
+          </span>
         </div>
-        {step.error !== null && <ErrorBox message={step.error} />}
+        {step.error !== null && <ErrorLog message={step.error} />}
       </li>
     ))}
   </ol>
 );
 
+const SummaryBar = ({ children }: { children: ReactNode }) => (
+  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">{children}</div>
+);
+
 const RunningView = ({ startedAt, steps }: { startedAt: number; steps: LiveStep[] }) => {
   const elapsed = useElapsedSeconds(startedAt);
   return (
-    <div className="space-y-5 p-5">
-      <div className="flex items-center justify-between rounded-lg border border-indigo-400/20 bg-indigo-400/10 px-4 py-3 text-indigo-200">
-        <span className="flex items-center gap-2.5 text-sm font-medium">
-          <LoaderCircle className="h-4 w-4 animate-spin" />
-          {steps.length === 0 ? 'Abriendo el navegador…' : 'Ejecutando en Chromium…'}
+    <div className="space-y-4 p-4">
+      <SummaryBar>
+        <span className="flex items-center gap-2 font-medium text-neutral-100">
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          {steps.length === 0 ? 'Iniciando Chromium' : 'En ejecución'}
         </span>
-        <span className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums opacity-80">
-          <Clock className="h-3.5 w-3.5" />
-          {elapsed}s
-        </span>
-      </div>
-      <StepList steps={steps} />
+        <span className="font-mono text-2xs tabular-nums text-neutral-500">{elapsed}s</span>
+      </SummaryBar>
+      {steps.length > 0 && <StepLog steps={steps} />}
     </div>
   );
 };
@@ -103,75 +76,76 @@ const RunningView = ({ startedAt, steps }: { startedAt: number; steps: LiveStep[
 type RepairProps = { repairDisabled: boolean; onRepair: () => void };
 
 const RepairPrompt = ({ repairDisabled, onRepair }: RepairProps) => (
-  <div className="flex flex-col gap-3 rounded-lg border border-indigo-400/20 bg-indigo-500/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
-    <p className="text-sm leading-relaxed text-zinc-300">
-      TestPilot puede analizar el error y el estado de la página para{' '}
-      <span className="text-white">corregir la prueba</span> o, si el fallo es del sitio,{' '}
-      <span className="text-white">redactar el reporte del bug</span>.
+  <div className="flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950 p-3 sm:flex-row sm:items-center sm:justify-between">
+    <p className="text-sm leading-relaxed text-neutral-400">
+      Analiza el error y el árbol de accesibilidad para corregir la prueba o, si el fallo es del
+      sitio, redactar el reporte del bug.
     </p>
-    <button
-      type="button"
-      disabled={repairDisabled}
-      onClick={onRepair}
-      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/30 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
-    >
-      <Wrench className="h-4 w-4" />
+    <button type="button" disabled={repairDisabled} onClick={onRepair} className="btn-secondary">
+      <Wrench className="h-3.5 w-3.5" />
       Diagnosticar y reparar
     </button>
   </div>
 );
 
 const PageSnapshot = ({ snapshot }: { snapshot: string }) => (
-  <details className="group rounded-lg border border-white/[0.08] bg-white/[0.02]">
-    <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-xs font-medium text-zinc-400 transition hover:text-zinc-200">
-      <ListTree className="h-3.5 w-3.5" />
-      Árbol de accesibilidad de la página al fallar
-      <span className="ml-auto text-zinc-600 group-open:hidden">mostrar</span>
-      <span className="ml-auto hidden text-zinc-600 group-open:inline">ocultar</span>
+  <details className="group rounded-md border border-neutral-800">
+    <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs text-neutral-400 transition-colors hover:text-neutral-200">
+      <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+      <span className="font-mono">aria-snapshot</span>
+      <span className="text-neutral-600">· estado de la página al fallar</span>
+      <span className="ml-auto font-mono text-2xs text-neutral-600">
+        {snapshot.length.toLocaleString('es-CO')} car.
+      </span>
     </summary>
-    <pre className="max-h-72 overflow-auto border-t border-white/[0.06] p-3.5 font-mono text-[11.5px] leading-5 text-zinc-400">
+    <pre className="max-h-72 overflow-auto border-t border-neutral-800 p-3 font-mono text-2xs leading-5 text-neutral-400">
       {snapshot}
     </pre>
   </details>
 );
 
 const ResultView = ({ result, ...repair }: RepairProps & { result: ExecutionResult }) => {
-  const banner = statusBanner[result.status];
-  const BannerIcon = banner.icon;
+  const status = STATUS[result.status];
   const stepHasError = result.steps.some((step) => step.error !== null);
+  const passed = result.steps.filter((step) => step.status === 'passed').length;
 
   return (
-    <div className="animate-fade-in space-y-5 p-5">
-      <div
-        className={`flex items-center justify-between rounded-lg border px-4 py-3 ${banner.style}`}
-      >
-        <span className="flex items-center gap-2.5 text-sm font-medium">
-          <BannerIcon className="h-4 w-4" />
-          {banner.title}
+    <div className="animate-fade-in space-y-4 p-4">
+      <SummaryBar>
+        <span className={`flex items-center gap-2 font-medium ${status.text}`}>
+          <span className={`h-2 w-2 rounded-full ${status.dot}`} />
+          {status.label}
         </span>
-        <span className="font-mono text-xs tabular-nums opacity-80">
+        <span className="font-mono text-2xs tabular-nums text-neutral-500">
           {formatDuration(result.durationMs)}
         </span>
-      </div>
+        {result.steps.length > 0 && (
+          <span className="font-mono text-2xs tabular-nums text-neutral-500">
+            {passed}/{result.steps.length} pasos
+          </span>
+        )}
+        <span className="ml-auto font-mono text-2xs text-neutral-600">chromium · headless</span>
+      </SummaryBar>
 
-      {result.steps.length > 0 && <StepList steps={result.steps} />}
+      {result.steps.length > 0 && <StepLog steps={result.steps} />}
 
-      {result.error !== null && !stepHasError && <ErrorBox message={result.error} />}
+      {result.error !== null && !stepHasError && <ErrorLog message={result.error} />}
 
       {result.status !== 'passed' && <RepairPrompt {...repair} />}
 
       {result.pageSnapshot !== null && <PageSnapshot snapshot={result.pageSnapshot} />}
 
       {result.screenshot !== null && (
-        <figure>
+        <figure className="overflow-hidden rounded-md border border-neutral-800">
+          <figcaption className="flex items-center justify-between border-b border-neutral-800 px-3 py-1.5">
+            <span className="font-mono text-2xs text-neutral-500">screenshot.png</span>
+            <span className="text-2xs text-neutral-600">estado final de la página</span>
+          </figcaption>
           <img
             src={result.screenshot}
             alt="Estado final de la página al terminar la prueba"
-            className="w-full rounded-lg border border-white/10"
+            className="w-full"
           />
-          <figcaption className="mt-2 text-center text-xs text-zinc-500">
-            Estado final de la página
-          </figcaption>
         </figure>
       )}
     </div>
@@ -189,14 +163,17 @@ export const ExecutionView = ({ state, ...repair }: RepairProps & { state: Execu
         return <ResultView result={state.outcome.result} {...repair} />;
       }
       return (
-        <div className="animate-fade-in p-5">
-          <div className="flex items-center gap-2.5 text-sm font-medium text-rose-300">
-            <CircleAlert className="h-4 w-4" />
-            No se pudo ejecutar la prueba
-          </div>
-          <p className="mt-2 text-sm text-zinc-400">{state.outcome.error.message}</p>
+        <div className="animate-fade-in space-y-3 p-4">
+          <SummaryBar>
+            <span className="flex items-center gap-2 font-medium text-red-400">
+              <Minus className="h-3.5 w-3.5" />
+              No se pudo ejecutar
+            </span>
+            <span className="tag">{state.outcome.error.error}</span>
+          </SummaryBar>
+          <p className="text-sm text-neutral-400">{state.outcome.error.message}</p>
           {state.outcome.error.details && state.outcome.error.details.length > 0 && (
-            <ErrorBox message={state.outcome.error.details.join('\n')} />
+            <ErrorLog message={state.outcome.error.details.join('\n')} />
           )}
         </div>
       );

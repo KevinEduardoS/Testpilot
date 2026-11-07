@@ -2,10 +2,9 @@ import type { AppInfo } from '@testpilot/shared';
 import { useEffect, useRef, useState } from 'react';
 import { generateTest, getAppInfo, repairTest, streamExecution } from './api';
 import { ConversationPanel } from './components/ConversationPanel';
-import { Header, Logo } from './components/Header';
-import { Hero } from './components/landing/Hero';
-import { Reveal } from './components/landing/Reveal';
-import { HowItWorks, Security, TechStack } from './components/landing/Sections';
+import { AppShell } from './components/shell/AppShell';
+import { ArchitectureView } from './components/views/ArchitectureView';
+import { RunsView } from './components/views/RunsView';
 import { Workspace } from './components/Workspace';
 import {
   buildContext,
@@ -21,12 +20,17 @@ import {
   type ExecutionState,
 } from './execution';
 import { useServiceStatus } from './hooks/useServiceStatus';
+import { isTerminalEvent, toRunRecord, type RunRecord } from './runs';
+import { hashForView, viewFromHash, type View } from './views';
 
 const IDLE_EXECUTION: ExecutionState = { phase: 'idle' };
 const isMobileLayout = () => window.matchMedia('(max-width: 1023px)').matches;
 
 export default function App() {
-  const status = useServiceStatus();
+  const services = useServiceStatus();
+  const [view, setView] = useState<View>(() => viewFromHash(window.location.hash));
+  const [runs, setRuns] = useState<RunRecord[]>([]);
+  const nextRunSequence = useRef(1);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -40,21 +44,22 @@ export default function App() {
   const runningExecution = useRef<AbortController | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
 
-  // Un enlace directo a una sección (#seguridad) llega antes de que React la cree: el
-  // navegador no encuentra el ancla, así que se desplaza aquí al montar.
+  // La vista activa vive en la URL (#/runs): los enlaces de la barra lateral solo cambian el hash.
   useEffect(() => {
-    const section = decodeURIComponent(window.location.hash.slice(1));
-    if (section !== '') {
-      document.getElementById(section)?.scrollIntoView();
-    }
+    const onHashChange = () => {
+      setView(viewFromHash(window.location.hash));
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
   // Se consulta cada vez que la API pasa a estar disponible.
   useEffect(() => {
-    if (status.api === 'up') {
+    if (services.api === 'up') {
       void getAppInfo().then(setInfo);
     }
-  }, [status.api]);
+  }, [services.api]);
 
   const versions = versionsOf(turns);
   const selected = versions.find((version) => version.number === selectedVersion);
@@ -151,9 +156,10 @@ export default function App() {
     if (selected === undefined) {
       return;
     }
-    const { number } = selected;
+    const { number, test } = selected;
     const conversation = conversationId.current;
-    setExecutions((previous) => ({ ...previous, [number]: startExecution(Date.now()) }));
+    const startedAt = Date.now();
+    setExecutions((previous) => ({ ...previous, [number]: startExecution(startedAt) }));
 
     const abort = new AbortController();
     runningExecution.current = abort;
@@ -167,6 +173,20 @@ export default function App() {
           ...previous,
           [number]: applyExecutionEvent(previous[number] ?? startExecution(Date.now()), event),
         }));
+        if (isTerminalEvent(event)) {
+          const sequence = nextRunSequence.current++;
+          setRuns((previous) => [
+            toRunRecord({
+              sequence,
+              version: number,
+              title: test.title,
+              startedAt,
+              finishedAt: Date.now(),
+              event,
+            }),
+            ...previous,
+          ]);
+        }
       },
       abort.signal,
     );
@@ -184,33 +204,48 @@ export default function App() {
     setExecutions({});
     setDraft('');
     setBaseUrl('');
+    // El historial pertenece a la conversación: sus versiones dejan de existir.
+    setRuns([]);
+  };
+
+  const openRun = (version: number) => {
+    setSelectedVersion(version);
+    window.location.hash = hashForView('playground');
   };
 
   const selectedExecution =
     selected === undefined ? IDLE_EXECUTION : (executions[selected.number] ?? IDLE_EXECUTION);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header api={status.api} runner={status.runner} demoMode={info?.aiProvider === 'demo'} />
-
-      <main className="flex-1">
-        <Hero />
-
-        <section id="probar" className="mx-auto w-full max-w-7xl px-4 pb-24 pt-4 sm:px-6">
-          <Reveal className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <AppShell
+      view={view}
+      runCount={runs.length}
+      services={services}
+      info={info}
+      actions={
+        info !== null && (
+          <span className="tag">
+            ai: <span className="text-neutral-200">{info.aiProvider}</span>
+          </span>
+        )
+      }
+    >
+      {view === 'playground' && (
+        <div className="px-4 py-4 sm:px-6">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <p className="section-eyebrow">Pruébalo</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                Elige un ejemplo y ejecútalo en Chromium
-              </h2>
+              <h1 className="text-base font-semibold text-neutral-100">Playground</h1>
+              <p className="mt-0.5 text-sm text-neutral-500">
+                Genera una prueba Playwright, ejecútala en Chromium y diagnostica los fallos.
+              </p>
             </div>
-            <p className="max-w-md text-sm leading-relaxed text-zinc-400">
-              Los dos últimos ejemplos fallan a propósito: uno por un selector y otro por un bug
-              real del sitio. Pulsa «Diagnosticar y reparar» para ver la diferencia.
+            <p className="font-mono text-2xs text-neutral-600">
+              {versions.length} {versions.length === 1 ? 'versión' : 'versiones'} · {runs.length}{' '}
+              {runs.length === 1 ? 'ejecución' : 'ejecuciones'}
             </p>
-          </Reveal>
+          </div>
 
-          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <ConversationPanel
               turns={turns}
               selectedVersion={selectedVersion}
@@ -225,7 +260,7 @@ export default function App() {
               onSelectVersion={setSelectedVersion}
               onReset={reset}
             />
-            <div ref={workspaceRef} className="scroll-mt-20">
+            <div ref={workspaceRef} className="scroll-mt-16">
               <Workspace
                 version={selected}
                 generating={generating}
@@ -237,24 +272,10 @@ export default function App() {
               />
             </div>
           </div>
-        </section>
-
-        <TechStack />
-        <HowItWorks />
-        <Security />
-      </main>
-
-      <footer className="border-t border-white/[0.06]">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-8 text-xs text-zinc-500 sm:flex-row sm:px-6">
-          <span className="flex items-center gap-2">
-            <Logo />
-            TestPilot · pruebas end-to-end con IA
-          </span>
-          <a href="#probar" className="transition hover:text-zinc-300">
-            Volver a la demo ↑
-          </a>
         </div>
-      </footer>
-    </div>
+      )}
+      {view === 'runs' && <RunsView runs={runs} onOpen={openRun} />}
+      {view === 'architecture' && <ArchitectureView />}
+    </AppShell>
   );
 }

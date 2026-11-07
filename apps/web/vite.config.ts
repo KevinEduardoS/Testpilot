@@ -1,7 +1,13 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const ENV_DIR = '../..';
+const { version } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as {
+  version: string;
+};
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 
 // VITE_API_URL queda fijada en el bundle al compilar. Sin esta comprobación, un build de
@@ -23,6 +29,8 @@ export default defineConfig(({ command, mode }) => {
   }
   return {
     plugins: [react()],
+    // La versión que muestra la interfaz sale del package.json de la web.
+    define: { __APP_VERSION__: JSON.stringify(version) },
     // Comparte el .env de la raíz; Vite solo expone al cliente las variables VITE_*.
     envDir: ENV_DIR,
     server: {

@@ -1,4 +1,4 @@
-import { FileCode } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 type VersionCardProps = {
   title: string;
@@ -18,25 +18,24 @@ export const VersionCard = ({
   <button
     type="button"
     onClick={() => onSelect(version)}
-    className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+    aria-pressed={selected}
+    className={`group flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
       selected
-        ? 'border-indigo-400/40 bg-indigo-500/10'
-        : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.04]'
+        ? 'border-neutral-600 bg-neutral-800/60'
+        : 'border-neutral-800 bg-neutral-950 hover:border-neutral-700 hover:bg-neutral-900'
     }`}
   >
-    <FileCode className={`h-4 w-4 shrink-0 ${selected ? 'text-indigo-300' : 'text-zinc-500'}`} />
+    <span className="tag shrink-0">v{version}</span>
     <span className="min-w-0 flex-1">
-      <span className="block truncate text-sm text-zinc-200">{title}</span>
-      <span className="text-xs text-zinc-500">
-        {stepCount} pasos · {selected ? 'en el panel' : 'ver en el panel'}
+      <span className="block truncate text-sm text-neutral-100">{title}</span>
+      <span className="font-mono text-2xs text-neutral-500">
+        {stepCount} {stepCount === 1 ? 'paso' : 'pasos'} · script generado
       </span>
     </span>
-    <span
-      className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] ${
-        selected ? 'bg-indigo-400/20 text-indigo-200' : 'bg-white/5 text-zinc-400'
+    <ChevronRight
+      className={`h-4 w-4 shrink-0 transition-colors ${
+        selected ? 'text-neutral-300' : 'text-neutral-600 group-hover:text-neutral-400'
       }`}
-    >
-      v{version}
-    </span>
+    />
   </button>
 );

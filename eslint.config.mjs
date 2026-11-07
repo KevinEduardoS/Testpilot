@@ -29,7 +29,8 @@ export default [
   {
     files: ['apps/web/src/**/*.{ts,tsx}'],
     languageOptions: {
-      globals: globals.browser,
+      // __APP_VERSION__ la inyecta Vite desde package.json (apps/web/vite.config.ts).
+      globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
     },
   },
   {

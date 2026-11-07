@@ -1,17 +1,5 @@
 import { EXAMPLES, MAX_INSTRUCTION_LENGTH, type ApiError } from '@testpilot/shared';
-import {
-  ArrowUp,
-  Ban,
-  CircleAlert,
-  CircleQuestionMark,
-  FlaskConical,
-  Globe,
-  LoaderCircle,
-  RotateCcw,
-  ShieldCheck,
-  Wrench,
-  type LucideIcon,
-} from 'lucide-react';
+import { CornerDownLeft, LoaderCircle, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import type { InstructionReply, RepairReply, Turn } from '../conversation';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
@@ -37,54 +25,43 @@ type ConversationPanelProps = {
 const PendingReply = ({ startedAt, label }: { startedAt: number; label: string }) => {
   const elapsed = useElapsedSeconds(startedAt);
   return (
-    <div className="flex items-center gap-2.5 text-sm text-zinc-400">
-      <LoaderCircle className="h-4 w-4 animate-spin text-indigo-400" />
+    <div className="flex items-center gap-2 text-sm text-neutral-400">
+      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
       {label}
-      <span className="font-mono text-xs tabular-nums text-zinc-600">{elapsed}s</span>
+      <span className="font-mono text-2xs tabular-nums text-neutral-600">{elapsed}s</span>
     </div>
   );
 };
 
-const Notice = ({
-  tone,
-  icon: Icon,
-  children,
-}: {
-  tone: 'info' | 'danger';
-  icon: LucideIcon;
-  children: ReactNode;
-}) => (
+const Callout = ({ tone, children }: { tone: 'info' | 'danger'; children: ReactNode }) => (
   <div
-    className={`flex gap-2.5 rounded-lg border px-3 py-2.5 text-sm leading-relaxed ${
-      tone === 'info'
-        ? 'border-sky-400/15 bg-sky-400/[0.06] text-sky-100/90'
-        : 'border-rose-400/15 bg-rose-400/[0.06] text-rose-100/90'
+    className={`border-l-2 py-0.5 pl-3 text-sm leading-relaxed ${
+      tone === 'info' ? 'border-neutral-500 text-neutral-300' : 'border-red-500/70 text-red-200/90'
     }`}
   >
-    <Icon
-      className={`mt-0.5 h-4 w-4 shrink-0 ${tone === 'info' ? 'text-sky-400' : 'text-rose-400'}`}
-    />
-    <div>{children}</div>
+    {children}
   </div>
 );
 
 const ErrorNotice = ({ error }: { error: ApiError }) => (
-  <Notice tone="danger" icon={CircleAlert}>
-    {error.message}
+  <Callout tone="danger">
+    <span className="font-mono text-2xs text-red-400">{error.error}</span>
+    <p>{error.message}</p>
     {error.details && error.details.length > 0 && (
-      <ul className="mt-2 space-y-0.5 font-mono text-xs text-rose-200/70">
+      <ul className="mt-1.5 space-y-0.5 font-mono text-2xs text-red-300/70">
         {error.details.map((detail) => (
           <li key={detail}>{detail}</li>
         ))}
       </ul>
     )}
-  </Notice>
+  </Callout>
 );
 
 const RejectedNotice = ({ reason }: { reason: string }) => (
-  <Notice tone="danger" icon={Ban}>
-    <span className="font-medium">Solicitud rechazada.</span> {reason}
-  </Notice>
+  <Callout tone="danger">
+    <span className="font-mono text-2xs text-red-400">rejected</span>
+    <p>{reason}</p>
+  </Callout>
 );
 
 type SelectionProps = {
@@ -98,7 +75,7 @@ const InstructionReplyView = ({
   onSelectVersion,
 }: SelectionProps & { reply: InstructionReply }) => {
   if (reply.phase === 'loading') {
-    return <PendingReply startedAt={reply.startedAt} label="Generando la prueba…" />;
+    return <PendingReply startedAt={reply.startedAt} label="Generando la prueba" />;
   }
   const { result, version } = reply;
   if (!result.ok) {
@@ -107,11 +84,7 @@ const InstructionReplyView = ({
 
   switch (result.data.status) {
     case 'needs_clarification':
-      return (
-        <Notice tone="info" icon={CircleQuestionMark}>
-          {result.data.question}
-        </Notice>
-      );
+      return <Callout tone="info">{result.data.question}</Callout>;
     case 'rejected':
       return <RejectedNotice reason={result.data.reason} />;
     case 'ok':
@@ -133,7 +106,7 @@ const RepairReplyView = ({
   onSelectVersion,
 }: SelectionProps & { reply: RepairReply }) => {
   if (reply.phase === 'loading') {
-    return <PendingReply startedAt={reply.startedAt} label="Diagnosticando el fallo…" />;
+    return <PendingReply startedAt={reply.startedAt} label="Diagnosticando el fallo" />;
   }
   const { result, version } = reply;
   if (!result.ok) {
@@ -168,23 +141,35 @@ const RepairReplyView = ({
   }
 };
 
-const TurnView = ({ turn, ...selection }: SelectionProps & { turn: Turn }) =>
-  turn.kind === 'instruction' ? (
-    <>
-      <div className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-indigo-500/90 px-3.5 py-2 text-sm leading-relaxed text-white">
-        {turn.instruction}
-      </div>
-      <InstructionReplyView reply={turn.reply} {...selection} />
-    </>
-  ) : (
-    <>
-      <div className="ml-auto flex w-fit items-center gap-2 rounded-2xl rounded-br-md border border-indigo-400/30 bg-indigo-500/10 px-3.5 py-2 text-sm text-indigo-100">
-        <Wrench className="h-3.5 w-3.5 text-indigo-300" />
-        Diagnosticar y reparar v{turn.sourceVersion}
-      </div>
-      <RepairReplyView reply={turn.reply} {...selection} />
-    </>
-  );
+const Message = ({ role, children }: { role: 'Tú' | 'TestPilot'; children: ReactNode }) => (
+  <div className="animate-fade-in">
+    <p className="eyebrow mb-1.5">{role}</p>
+    {children}
+  </div>
+);
+
+const TurnView = ({ turn, ...selection }: SelectionProps & { turn: Turn }) => (
+  <div className="space-y-4">
+    <Message role="Tú">
+      {turn.kind === 'instruction' ? (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-100">
+          {turn.instruction}
+        </p>
+      ) : (
+        <p className="text-sm text-neutral-100">
+          Diagnosticar y reparar <span className="tag">v{turn.sourceVersion}</span>
+        </p>
+      )}
+    </Message>
+    <Message role="TestPilot">
+      {turn.kind === 'instruction' ? (
+        <InstructionReplyView reply={turn.reply} {...selection} />
+      ) : (
+        <RepairReplyView reply={turn.reply} {...selection} />
+      )}
+    </Message>
+  </div>
+);
 
 export const ConversationPanel = ({
   turns,
@@ -204,8 +189,7 @@ export const ConversationPanel = ({
   const started = turns.length > 0;
   const canSend = draft.trim().length > 0 && !busy;
 
-  // Solo se desplaza el hilo: scrollIntoView movería también la página y la cabecera fija
-  // taparía el título.
+  // Solo se desplaza el hilo: scrollIntoView movería también la página.
   useEffect(() => {
     const element = thread.current;
     element?.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
@@ -230,104 +214,96 @@ export const ConversationPanel = ({
   };
 
   return (
-    <section className="card flex max-h-[80vh] flex-col overflow-hidden lg:h-[calc(100vh-15rem)] lg:max-h-none lg:min-h-[560px]">
-      <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
-        <h2 className="text-sm font-medium text-zinc-200">Conversación</h2>
+    <section className="panel flex max-h-[80vh] flex-col overflow-hidden lg:h-[calc(100vh-9.5rem)] lg:max-h-none lg:min-h-[540px]">
+      <div className="flex h-10 items-center justify-between border-b border-neutral-800 px-4">
+        <h2 className="text-sm font-medium text-neutral-200">Conversación</h2>
         {started && (
           <button
             type="button"
             onClick={onReset}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300 disabled:pointer-events-none disabled:opacity-50"
+            className="btn-ghost -mr-2 h-7 px-2 text-xs"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            Nueva conversación
+            Nueva
           </button>
         )}
       </div>
 
-      <div ref={thread} className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+      <div ref={thread} className="flex-1 space-y-6 overflow-y-auto px-4 py-4">
         {demoMode && (
-          <div className="flex gap-3 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] p-3.5 text-sm">
-            <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-            <p className="leading-relaxed text-amber-100/80">
-              <span className="font-medium text-amber-200">Modo demo.</span> La IA no está
-              configurada: elige uno de los ejemplos. Sus scripts son predefinidos, pero la
-              ejecución en el navegador es real.
+          <div className="flex items-start gap-3 rounded-md border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5">
+            <span className="tag shrink-0 border-amber-500/30 bg-transparent text-amber-400">
+              demo
+            </span>
+            <p className="text-xs leading-relaxed text-neutral-400">
+              Sin proveedor de IA configurado: los ejemplos devuelven scripts predefinidos. La
+              ejecución en Chromium es real.
             </p>
           </div>
         )}
 
         {!started && (
           <div>
-            <p className="text-sm leading-relaxed text-zinc-400">
-              Describe un caso de prueba en lenguaje natural. Después puedes pedir cambios y cada
-              respuesta genera una nueva versión del script.
+            <p className="text-sm leading-relaxed text-neutral-400">
+              Describe un caso en lenguaje natural. Cada respuesta genera una versión del script que
+              puedes ejecutar, refinar o reparar.
             </p>
-            <p className="mb-2 mt-5 text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Ejemplos
-            </p>
-            <div className="grid gap-2">
+            <p className="eyebrow mb-2 mt-5">Ejemplos</p>
+            <ul className="divide-y divide-neutral-800 overflow-hidden rounded-md border border-neutral-800">
               {EXAMPLES.map((example) => (
-                <button
-                  key={example.id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    onBaseUrlChange(example.baseUrl);
-                    onSend(example.instruction, example.baseUrl);
-                  }}
-                  className="group flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-left text-sm text-zinc-400 transition hover:border-white/[0.12] hover:bg-white/[0.04] hover:text-zinc-200 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  {example.label}
-                  <span className="font-mono text-[11px] text-zinc-600 group-hover:text-zinc-400">
-                    saucedemo.com
-                  </span>
-                </button>
+                <li key={example.id}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      onBaseUrlChange(example.baseUrl);
+                      onSend(example.instruction, example.baseUrl);
+                    }}
+                    className="group flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-neutral-300 transition-colors hover:bg-neutral-800/40 hover:text-neutral-100 disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    {example.label}
+                    <span className="font-mono text-2xs text-neutral-600 group-hover:text-neutral-400">
+                      {new URL(example.baseUrl).hostname}
+                    </span>
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
 
         {turns.map((turn) => (
-          <div key={turn.id} className="animate-fade-in space-y-3">
-            <TurnView
-              turn={turn}
-              selectedVersion={selectedVersion}
-              onSelectVersion={onSelectVersion}
-            />
-          </div>
+          <TurnView
+            key={turn.id}
+            turn={turn}
+            selectedVersion={selectedVersion}
+            onSelectVersion={onSelectVersion}
+          />
         ))}
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-white/[0.06] p-4">
-        {started ? (
-          baseUrl !== '' && (
-            <p className="mb-2 flex items-center gap-1.5 font-mono text-[11px] text-zinc-500">
-              <Globe className="h-3 w-3" />
-              {baseUrl}
-            </p>
-          )
-        ) : (
-          <div className="relative mb-2">
-            <Globe className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-            <input
-              type="url"
-              aria-label="URL base (opcional)"
-              value={baseUrl}
-              onChange={(event) => onBaseUrlChange(event.target.value)}
-              placeholder={`URL base (opcional): https://${allowedDomains?.[0] ?? 'ejemplo.com'}`}
-              className="field py-2 pl-9 font-mono text-xs"
-            />
+      <form onSubmit={handleSubmit} className="border-t border-neutral-800 p-3">
+        <div className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950 focus-within:border-neutral-600">
+          <div className="flex items-center border-b border-neutral-800">
+            <span className="shrink-0 border-r border-neutral-800 px-2.5 py-1.5 font-mono text-2xs text-neutral-500">
+              base_url
+            </span>
+            {started ? (
+              <span className="truncate px-2.5 font-mono text-xs text-neutral-400">
+                {baseUrl === '' ? '—' : baseUrl}
+              </span>
+            ) : (
+              <input
+                type="url"
+                aria-label="URL base (opcional)"
+                value={baseUrl}
+                onChange={(event) => onBaseUrlChange(event.target.value)}
+                placeholder={`https://${allowedDomains?.[0] ?? 'ejemplo.com'}`}
+                className="min-w-0 flex-1 bg-transparent px-2.5 py-1.5 font-mono text-xs text-neutral-200 placeholder:text-neutral-700 focus:outline-none"
+              />
+            )}
           </div>
-        )}
-        {!started && allowedDomains !== null && (
-          <p className="-mt-0.5 mb-2 flex items-center gap-1.5 text-[11px] text-zinc-500">
-            <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-400/70" />
-            Esta demo solo puede probar {allowedDomains.join(', ')}.
-          </p>
-        )}
-        <div className="relative">
           <textarea
             aria-label="Instrucción"
             value={draft}
@@ -337,27 +313,32 @@ export const ConversationPanel = ({
             rows={3}
             placeholder={
               started
-                ? 'Pide un cambio: «verifica también el precio»…'
-                : 'Describe el caso de prueba…'
+                ? 'Pide un cambio: «verifica también el precio»'
+                : 'Describe el caso de prueba'
             }
-            className="field resize-none pr-12 leading-relaxed"
+            className="block w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed text-neutral-100 placeholder:text-neutral-600 focus:outline-none"
           />
-          <button
-            type="submit"
-            disabled={!canSend}
-            aria-label="Enviar"
-            className="absolute bottom-2.5 right-2.5 flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-white transition hover:bg-indigo-400 disabled:bg-zinc-800 disabled:text-zinc-600"
-          >
-            {busy ? (
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowUp className="h-4 w-4" />
-            )}
-          </button>
+          <div className="flex items-center justify-between gap-3 px-3 pb-2.5">
+            <span className="flex items-center gap-1.5 text-2xs text-neutral-600">
+              <span className="kbd">Ctrl</span>
+              <span className="kbd">
+                <CornerDownLeft className="h-2.5 w-2.5" />
+              </span>
+              <span className="font-mono tabular-nums">
+                {draft.length}/{MAX_INSTRUCTION_LENGTH}
+              </span>
+            </span>
+            <button type="submit" disabled={!canSend} className="btn-primary h-7 px-2.5 text-xs">
+              {busy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
+              {started ? 'Enviar' : 'Generar prueba'}
+            </button>
+          </div>
         </div>
-        <p className="mt-2 text-[11px] text-zinc-600">
-          Ctrl + Enter para enviar · {draft.length}/{MAX_INSTRUCTION_LENGTH}
-        </p>
+        {!started && allowedDomains !== null && (
+          <p className="mt-2 font-mono text-2xs text-neutral-600">
+            allowed_domains: {allowedDomains.join(', ')}
+          </p>
+        )}
       </form>
     </section>
   );

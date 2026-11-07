@@ -1,8 +1,14 @@
 import { Check, Copy } from 'lucide-react';
-import { Highlight, themes } from 'prism-react-renderer';
+import { Highlight, themes, type PrismTheme } from 'prism-react-renderer';
 import { useEffect, useState } from 'react';
 
 const COPIED_FEEDBACK_MS = 2000;
+
+// Tema sobrio: el de VS Code sin su fondo, para que el bloque herede el del panel.
+const CODE_THEME: PrismTheme = {
+  ...themes.vsDark,
+  plain: { ...themes.vsDark.plain, backgroundColor: 'transparent' },
+};
 
 export const CopyButton = ({ text, label = 'Copiar' }: { text: string; label?: string }) => {
   const [copied, setCopied] = useState(false);
@@ -25,13 +31,9 @@ export const CopyButton = ({ text, label = 'Copiar' }: { text: string; label?: s
   };
 
   return (
-    <button
-      type="button"
-      onClick={() => void copy()}
-      className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
-    >
+    <button type="button" onClick={() => void copy()} className="btn-ghost h-7 px-2 text-xs">
       {copied ? (
-        <Check className="h-3.5 w-3.5 text-emerald-400" />
+        <Check className="h-3.5 w-3.5 text-emerald-500" />
       ) : (
         <Copy className="h-3.5 w-3.5" />
       )}
@@ -41,16 +43,16 @@ export const CopyButton = ({ text, label = 'Copiar' }: { text: string; label?: s
 };
 
 export const CodeBlock = ({ code }: { code: string }) => (
-  <Highlight theme={themes.oneDark} code={code.trimEnd()} language="tsx">
+  <Highlight theme={CODE_THEME} code={code.trimEnd()} language="tsx">
     {({ tokens, getLineProps, getTokenProps }) => (
-      <pre className="max-h-[560px] overflow-auto py-4 font-mono text-[12.5px] leading-6">
+      <pre className="max-h-[560px] overflow-auto py-3 font-mono text-xs leading-6">
         {tokens.map((line, lineIndex) => (
           <div
             key={lineIndex}
             {...getLineProps({ line })}
-            className="flex px-4 hover:bg-white/[0.02]"
+            className="flex px-4 hover:bg-neutral-800/30"
           >
-            <span className="mr-5 inline-block w-6 shrink-0 select-none text-right text-zinc-600">
+            <span className="mr-5 inline-block w-6 shrink-0 select-none text-right text-neutral-600">
               {lineIndex + 1}
             </span>
             <span>

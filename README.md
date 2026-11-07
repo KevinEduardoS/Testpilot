@@ -19,6 +19,10 @@ Escribir pruebas end-to-end es lento, y mantenerlas lo es más: cuando una falla
    - Si el fallo es de la prueba, propone una versión corregida.
    - Si es del sitio, redacta un reporte de bug con severidad, pasos, resultado esperado y actual.
 
+Cada ejecución queda en el historial de la sesión, con su estado, pasos superados y duración:
+
+![Historial de ejecuciones](docs/assets/runs.png)
+
 ## Inicio rápido
 
 Requisitos: Node.js 20+ y npm 10+.

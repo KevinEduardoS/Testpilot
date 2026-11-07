@@ -1,101 +1,112 @@
 # TestPilot
 
-TestPilot genera, ejecuta y diagnostica pruebas Playwright a partir de instrucciones en lenguaje natural. La solución está separada en tres servicios: web, API y runner.
+Pruebas end-to-end a partir de lenguaje natural. TestPilot genera un script de Playwright, lo ejecuta en Chromium mostrando cada paso en vivo y, cuando falla, distingue si el error es de la prueba o un bug real del sitio.
 
-## Qué hace hoy
-- **Genera** un script Playwright + TypeScript a partir de una instrucción, usando Claude con salida estructurada.
-- **Valida** cada script con una política de seguridad que analiza su AST (sin `eval`, `require`, `process`, `page.evaluate`, reflexión, red fuera del navegador, etc.).
-- **Refina** la prueba en una conversación: cada cambio pedido genera una versión nueva del script a partir de la versión seleccionada.
-- **Ejecuta** el script en Chromium dentro del runner y muestra en vivo cada paso, su duración, el error del paso fallido y una captura final.
-- **Diagnostica y repara** las pruebas que fallan. Con el error, los pasos y el árbol de accesibilidad de la página en el momento del fallo, la IA clasifica la causa (selector, sincronización, aserción, bug de la aplicación o entorno) y:
-  - si el fallo es de la prueba, devuelve una versión corregida, que se puede volver a ejecutar;
-  - si es del sitio, redacta un reporte de bug con severidad, pasos para reproducir, resultado esperado y actual, copiable en Markdown.
+![Playground de TestPilot: una prueba reparada tras fallar por un selector](docs/assets/playground.png)
 
-```
-Navegador ──► Web (React) ──► API (Fastify + Claude) ──► Runner (Playwright)
-```
+**Stack:** TypeScript · React 18 · Fastify 4 · Playwright 1.49 · Zod · Claude API · Vitest · Docker
 
-## Requisitos
-- Node.js 20+
-- npm 10+
-- Docker + Docker Compose (opcional para levantar la pila completa)
+## Por qué
 
-## Configuración
-```bash
-cp .env.example .env
-```
+Escribir pruebas end-to-end es lento, y mantenerlas lo es más: cuando una falla, alguien tiene que investigar si cambió un selector o si la aplicación de verdad se rompió. TestPilot automatiza ese ciclo completo. La parte difícil no es generar el script, sino **ejecutar código escrito por un modelo sin poner en riesgo el servidor** y **reparar pruebas sin ocultar bugs reales**.
 
-Definir en `.env`:
-- `ANTHROPIC_API_KEY`: clave de la API de Anthropic.
-- `INTERNAL_API_KEY`: mínimo 32 caracteres. La API y el runner no arrancan sin ella:
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  ```
+## Qué hace
 
-### Modo demo (sin clave de IA)
-Con `AI_PROVIDER=demo` la API no necesita `ANTHROPIC_API_KEY`: los ejemplos de la web devuelven scripts predefinidos y la ejecución en el navegador sigue siendo real. La interfaz lo indica con la etiqueta "Modo demo". Para usar Claude, `AI_PROVIDER=anthropic` y definir `ANTHROPIC_API_KEY`.
+1. Convierte una instrucción ("inicia sesión con un usuario inválido y verifica el error") en un script de Playwright con pasos legibles y aserciones web-first.
+2. Permite refinarlo en una conversación. Cada respuesta es una versión nueva del script.
+3. Lo valida con una política de seguridad sobre su AST y lo ejecuta en Chromium aislado, transmitiendo cada paso con su duración, el error y una captura final.
+4. Si falla, analiza el error, los pasos y el árbol de accesibilidad de la página, y clasifica la causa: selector, sincronización, aserción, bug de la aplicación o entorno.
+   - Si el fallo es de la prueba, propone una versión corregida.
+   - Si es del sitio, redacta un reporte de bug con severidad, pasos, resultado esperado y actual.
 
-Dos ejemplos fallan a propósito contra saucedemo.com para mostrar la reparación, con diagnósticos predefinidos:
-- **Título del catálogo**: la prueba supone que «Products» es un encabezado, pero no lo es. La reparación corrige el selector y la versión nueva pasa.
-- **Ordenar por precio (problem_user)**: el sitio ignora la ordenación con ese usuario. La reparación no toca la prueba y genera el reporte del bug.
+## Inicio rápido
 
-## Levantar sin Docker
+Requisitos: Node.js 20+ y npm 10+.
+
 ```bash
 npm install
 npx --workspace apps/runner playwright install chromium
-npm run dev
+cp .env.example .env    # define INTERNAL_API_KEY; AI_PROVIDER=demo funciona sin clave de IA
+npm run dev             # web :5173 · API :3001 · runner :3002
 ```
 
-## Levantar con Docker
+En modo demo, los ejemplos devuelven scripts predefinidos y la ejecución en el navegador es real. Todas las variables están en [docs/configuration.md](docs/configuration.md).
+
+## Arquitectura
+
+```
+Navegador ──HTTPS──► Web (React) ──JSON / NDJSON──► API (Fastify + Claude) ──HTTP interno──► Runner (Playwright)
+```
+
+| Paquete           | Responsabilidad                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`        | Playground con versiones, ejecución en vivo, historial de ejecuciones y documentación de la arquitectura.                 |
+| `apps/api`        | Genera y repara con salida estructurada, aplica la política y los límites, y transmite la ejecución.                      |
+| `apps/runner`     | Ejecuta cada script en un proceso aislado y emite el progreso por un canal propio. Nunca es accesible desde el navegador. |
+| `packages/shared` | Contratos Zod compartidos, la política de scripts y el lector del stream de eventos.                                      |
+
+### API
+
+| Método | Ruta                  | Descripción                                                                                                                                         |
+| ------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/tests/generate` | `{ instruction, baseUrl?, context? }` → prueba, pregunta de aclaración o rechazo. `context` lleva el script vigente y las instrucciones anteriores. |
+| `POST` | `/api/tests/execute`  | `{ script }` → stream NDJSON con `step-begin`, `step-end` y un evento final `result` o `error`.                                                     |
+| `POST` | `/api/tests/repair`   | `{ instructions, script, failure }` → prueba corregida (`fixed`) o reporte de bug (`bug_report`).                                                   |
+| `GET`  | `/api/info`           | Proveedor de IA activo y dominios permitidos.                                                                                                       |
+| `GET`  | `/api/ping`           | Estado del runner visto desde la API.                                                                                                               |
+| `GET`  | `/health`             | Estado de la API.                                                                                                                                   |
+
+## Decisiones de diseño
+
+**Analizar el AST, no el texto.** Buscar `eval` en el código se evade con una concatenación o un comentario. La política recorre el árbol de sintaxis con el compilador de TypeScript y rechaza identificadores, propiedades y accesos dinámicos peligrosos. Se aplica en la API y otra vez en el runner, que no confía en nadie.
+
+**Dos barreras para la red.** La política exige que `page.goto()` reciba una URL literal de un dominio permitido, pero eso no cubre redirecciones ni enlaces. Por eso el runner, además, lanza Chromium con todo el tráfico dirigido a un proxy inexistente, salvo el de los dominios permitidos. Ninguna capa depende de la otra.
+
+**NDJSON en lugar de WebSockets.** La ejecución es unidireccional y corta. Un `POST` cuya respuesta es un stream de líneas JSON funciona con `fetch`, atraviesa proxies sin configuración y permite cancelar con un `AbortController`: si el cliente se desconecta, la API detiene el navegador en el runner.
+
+**Progreso por un descriptor de archivo propio.** El reporter de Playwright escribe los pasos en el fd 3, que el script de la prueba no controla. Un `console.log` malicioso no puede falsear el progreso.
+
+**Reparar sin debilitar.** Una reparación que quita la aserción que falla hace pasar la prueba y esconde el bug. La API descarta por código las reparaciones con menos `expect()` que el original y las que "corrigen" la prueba cuando la causa diagnosticada es un bug o el entorno. No depende de que el modelo obedezca el prompt.
+
+**Contratos compartidos.** Cada mensaje entre servicios se valida con el mismo esquema Zod en los dos extremos. Un cambio en un contrato rompe la compilación de los tres servicios, no la producción.
+
+El modelo de seguridad completo está en [docs/security.md](docs/security.md).
+
+## Calidad
+
+194 tests con Vitest, en todos los paquetes:
+
+| Paquete           | Tests | Qué cubren                                                                                                             |
+| ----------------- | ----- | ---------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared` | 64    | Política de scripts (intentos de evasión incluidos), contratos y stream de eventos.                                    |
+| `apps/api`        | 80    | Rutas, generación y reparación con un cliente de Anthropic simulado, presupuesto de IA y autenticación ante el runner. |
+| `apps/runner`     | 22    | Ejecución real en Chromium: progreso, cancelación, timeouts, aislamiento del entorno y bloqueo de red.                 |
+| `apps/web`        | 28    | Modelo de la conversación, estado de la ejecución, historial y formato.                                                |
+
 ```bash
-docker compose up --build
+npm run test && npm run typecheck && npm run lint
 ```
 
-La imagen del runner ya incluye los navegadores. Los contenedores solo montan las carpetas `src`; tras cambiar dependencias o archivos de configuración, reconstruir con `docker compose up --build`.
+## Despliegue
 
-## Despliegue público
-La web se publica en Vercel y la API y el runner en Google Cloud Run, con el runner como servicio privado. Los pasos, desde la preparación del proyecto hasta activar Claude, están en [docs/deploy.md](docs/deploy.md).
+La web se publica en Vercel; la API y el runner en Google Cloud Run, con el runner como servicio privado que solo la API puede invocar. Las imágenes de producción y `cloudbuild.yaml` están en el repositorio, y los pasos en [docs/deploy.md](docs/deploy.md).
 
-## Servicios
-- Web: http://localhost:5173
-- API: http://localhost:3001
-- Runner: http://localhost:3002 sin Docker; con Docker solo es accesible desde la API
+## Limitaciones conocidas
 
-## API
-| Método | Ruta | Descripción |
-|---|---|---|
-| `POST` | `/api/tests/generate` | `{ instruction, baseUrl?, context? }` → prueba generada, pregunta de aclaración o rechazo. `context` lleva el script vigente y las instrucciones anteriores para refinar |
-| `POST` | `/api/tests/repair` | `{ instructions, script, failure }` → diagnóstico con prueba corregida (`fixed`) o reporte de bug (`bug_report`). `failure` es la evidencia de la ejecución: estado, error, pasos y snapshot de la página |
-| `POST` | `/api/tests/execute` | `{ script }` → stream NDJSON con eventos `step-begin`, `step-end` y un evento final `result` o `error` |
-| `GET` | `/api/info` | Proveedor de IA activo (`anthropic` o `demo`) |
-| `GET` | `/api/ping` | Estado del runner visto desde la API |
-| `GET` | `/health` | Estado de la API |
+- Las imágenes Docker de producción y `docker compose` aún no se han probado en un entorno real.
+- La generación y la reparación con Claude están cubiertas con respuestas simuladas; el modo demo es el que está verificado de punta a punta.
+- Sin Docker, el runner ejecuta las pruebas con los permisos del usuario local.
+- El presupuesto de IA y los límites por visitante viven en memoria: se reinician con el proceso.
+- Una ejecución a la vez por runner.
 
-Los `POST` tienen un límite por IP configurable con `RATE_LIMIT_PER_HOUR`, contado por separado en cada ruta. Detrás de un proxy (el de la plataforma de despliegue), `TRUST_PROXY` debe indicar cuántos hay para que la IP sea la del visitante: con `0` se ignora `X-Forwarded-For`, que de otro modo cualquiera podría falsear.
+## Estructura
 
-## Variables de entorno
-Todos los servicios leen el `.env` de la raíz, pero cada uno toma solo las variables que necesita. La web solo recibe las que empiezan por `VITE_`.
-
-`ALLOWED_DOMAINS` define los dominios que pueden visitar las pruebas, separados por comas (cada uno incluye sus subdominios). Por defecto es `saucedemo.com`. Con `*` se permite cualquiera, algo aceptable solo en desarrollo local. La API y el runner deben tener el mismo valor.
-
-`AI_DAILY_TOKEN_BUDGET` es el tope diario de tokens de IA (entrada, salida y caché; por defecto 1 000 000). Al agotarse, la API deja de llamar a Claude hasta el día siguiente (UTC) y los ejemplos se responden con los scripts de demo. El contador vive en memoria y es aproximado, así que conviene fijar también un límite de gasto en la consola de Anthropic.
-
-`SNAPSHOT_MAX_CHARS` limita el tamaño del árbol de accesibilidad que el runner captura al fallar una prueba (máximo y valor por defecto: 40 000 caracteres).
-
-## Seguridad
-- Nunca versionar archivos `.env` ni secretos reales.
-- `ANTHROPIC_API_KEY` solo la recibe la API; `INTERNAL_API_KEY`, la API y el runner. Ninguna llega al navegador.
-- La política de seguridad se aplica dos veces: en la API y de nuevo en el runner antes de ejecutar.
-- El proceso que ejecuta cada prueba solo hereda las variables imprescindibles (`PATH`, directorios temporales y de navegadores), nunca los secretos del runner.
-- Una sola ejecución a la vez y timeout por prueba (`RUN_TIMEOUT_MS`). Al agotarse el tiempo o desconectarse el cliente se mata el árbol de procesos completo, navegador incluido.
-- El progreso llega al runner por un canal propio (descriptor 3) que el script no puede escribir, así que no puede falsear los pasos.
-- Las instrucciones del usuario y el contenido de las páginas se tratan como datos, nunca como instrucciones para el modelo. Van delimitados por etiquetas y, si contienen una de esas etiquetas, se elimina para que no puedan cerrar su bloque.
-- Una reparación nunca puede ocultar un fallo: la API descarta las que corrigen la prueba cuando la causa es un bug o el entorno, las que devuelven el mismo script y las que tienen menos aserciones `expect()` que el original.
-- Las pruebas solo pueden visitar los dominios de `ALLOWED_DOMAINS`, con dos barreras:
-  - **Estática:** `page.goto()` solo acepta una URL absoluta http(s) escrita como literal y de un dominio permitido. Así se descartan `file://` y las URLs construidas en tiempo de ejecución. Las URL base de otros dominios se rechazan antes de llamar a la IA.
-  - **De red:** el runner lanza Chromium con todo el tráfico dirigido a un proxy inexistente, salvo el de los dominios permitidos. Fallan otros sitios, IPs, `localhost` y la IP de metadatos de la nube, incluso tras una redirección o un clic en un enlace.
-  - La política prohíbe además lo que permitiría saltarse el proxy o cargar contenido arbitrario: `test.use`, `test.extend`, el fixture `browser`, `newContext`, `setContent` y `addScriptTag`.
-- El snapshot de la página lo captura un hook que el runner añade al final del script ya validado. Si el script adjunta uno propio, se usa el del runner.
-
-### Límites conocidos
-- Sin Docker, el runner ejecuta las pruebas con los permisos del usuario local; el aislamiento de procesos depende del contenedor.
+```
+apps/
+  web/        React + Vite + Tailwind
+  api/        Fastify, prompts en src/prompts
+  runner/     Fastify + Playwright
+packages/
+  shared/     Contratos Zod y política de scripts
+docs/         Seguridad, configuración y despliegue
+```

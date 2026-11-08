@@ -80,14 +80,14 @@ El modelo de seguridad completo está en [docs/security.md](docs/security.md).
 
 ## Calidad
 
-194 tests con Vitest, en todos los paquetes:
+208 tests con Vitest, en todos los paquetes:
 
 | Paquete           | Tests | Qué cubren                                                                                                             |
 | ----------------- | ----- | ---------------------------------------------------------------------------------------------------------------------- |
 | `packages/shared` | 64    | Política de scripts (intentos de evasión incluidos), contratos y stream de eventos.                                    |
 | `apps/api`        | 80    | Rutas, generación y reparación con un cliente de Anthropic simulado, presupuesto de IA y autenticación ante el runner. |
 | `apps/runner`     | 22    | Ejecución real en Chromium: progreso, cancelación, timeouts, aislamiento del entorno y bloqueo de red.                 |
-| `apps/web`        | 28    | Modelo de la conversación, estado de la ejecución, historial y formato.                                                |
+| `apps/web`        | 42    | Modelo de la conversación, estado de la ejecución, historial, formato y reproducción de la demo grabada.               |
 
 ```bash
 npm run test && npm run typecheck && npm run lint

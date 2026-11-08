@@ -16,7 +16,8 @@ import {
 } from '@testpilot/shared';
 import { readExecutionEvents } from '@testpilot/shared/execution-stream';
 import type { ZodType } from 'zod';
-import { env } from './config';
+import { env, isRecordedBackend } from './config';
+import { recordedExecution, recordedGenerate, recordedRepair } from './recorded-backend';
 
 const REQUEST_TIMEOUT_MS = 5000;
 // La generación y la reparación con IA pueden tardar; el SDK de la API reintenta antes de rendirse.
@@ -40,7 +41,13 @@ export const isApiUp = async (): Promise<boolean> => {
   }
 };
 
+// Lo que expondría la API en modo demo; la grabación se hizo con esa configuración.
+const RECORDED_APP_INFO: AppInfo = { aiProvider: 'demo', allowedDomains: ['saucedemo.com'] };
+
 export const getAppInfo = async (): Promise<AppInfo | null> => {
+  if (isRecordedBackend) {
+    return RECORDED_APP_INFO;
+  }
   try {
     return appInfoSchema.parse(await fetchJson('/api/info'));
   } catch {
@@ -132,10 +139,14 @@ const postForResult = async <T>(
 };
 
 export const generateTest = (input: GenerateTestRequest): Promise<GenerateResult> =>
-  postForResult('/api/tests/generate', input, generateTestResponseSchema);
+  isRecordedBackend
+    ? recordedGenerate(input)
+    : postForResult('/api/tests/generate', input, generateTestResponseSchema);
 
 export const repairTest = (input: RepairTestRequest): Promise<RepairResult> =>
-  postForResult('/api/tests/repair', input, repairTestResponseSchema);
+  isRecordedBackend
+    ? recordedRepair(input)
+    : postForResult('/api/tests/repair', input, repairTestResponseSchema);
 
 // Ejecuta una prueba y entrega su progreso evento a evento. El último evento es siempre
 // "result" o "error", también cuando la API rechaza la petición o se pierde la conexión.
@@ -145,6 +156,9 @@ export const streamExecution = async (
   onEvent: (event: ExecutionEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> => {
+  if (isRecordedBackend) {
+    return recordedExecution(input, onEvent, signal);
+  }
   const result = await post('/api/tests/execute', input, EXECUTE_TIMEOUT_MS, signal);
   if (!result.ok) {
     onEvent({ type: 'error', error: result.error });

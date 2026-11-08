@@ -7,8 +7,9 @@
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "typecheck": "tsc --noEmit && tsc -p scripts",
+    "lint": "eslint .",
+    "record:demo": "tsx scripts/record-demo.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

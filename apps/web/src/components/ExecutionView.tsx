@@ -1,6 +1,7 @@
 import type { ExecutionResult } from '@testpilot/shared';
 import { Check, ChevronRight, LoaderCircle, Minus, Wrench, X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { isRecordedBackend } from '../config';
 import type { ExecutionState, LiveStep } from '../execution';
 import { formatDuration } from '../format';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
@@ -124,7 +125,9 @@ const ResultView = ({ result, ...repair }: RepairProps & { result: ExecutionResu
             {passed}/{result.steps.length} pasos
           </span>
         )}
-        <span className="ml-auto font-mono text-2xs text-neutral-600">chromium · headless</span>
+        <span className="ml-auto font-mono text-2xs text-neutral-600">
+          {isRecordedBackend ? 'grabación · chromium' : 'chromium · headless'}
+        </span>
       </SummaryBar>
 
       {result.steps.length > 0 && <StepLog steps={result.steps} />}

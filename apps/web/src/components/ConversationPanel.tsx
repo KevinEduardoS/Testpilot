@@ -1,6 +1,7 @@
 import { EXAMPLES, MAX_INSTRUCTION_LENGTH, type ApiError } from '@testpilot/shared';
 import { CornerDownLeft, LoaderCircle, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { isRecordedBackend } from '../config';
 import type { InstructionReply, RepairReply, Turn } from '../conversation';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { BugReportCard, DiagnosisNotice } from './DiagnosisViews';
@@ -231,16 +232,28 @@ export const ConversationPanel = ({
       </div>
 
       <div ref={thread} className="flex-1 space-y-6 overflow-y-auto px-4 py-4">
-        {demoMode && (
-          <div className="flex items-start gap-3 rounded-md border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5">
-            <span className="tag shrink-0 border-amber-500/30 bg-transparent text-amber-400">
-              demo
+        {isRecordedBackend ? (
+          <div className="flex items-start gap-3 rounded-md border border-sky-500/20 bg-sky-500/[0.04] px-3 py-2.5">
+            <span className="tag shrink-0 border-sky-500/30 bg-transparent text-sky-400">
+              grabado
             </span>
             <p className="text-xs leading-relaxed text-neutral-400">
-              Sin proveedor de IA configurado: los ejemplos devuelven scripts predefinidos. La
-              ejecución en Chromium es real.
+              Versión publicada sin servidor: reproduce ejecuciones reales grabadas en Chromium, con
+              sus pasos, tiempos, errores y capturas. Solo están disponibles los ejemplos.
             </p>
           </div>
+        ) : (
+          demoMode && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5">
+              <span className="tag shrink-0 border-amber-500/30 bg-transparent text-amber-400">
+                demo
+              </span>
+              <p className="text-xs leading-relaxed text-neutral-400">
+                Sin proveedor de IA configurado: los ejemplos devuelven scripts predefinidos. La
+                ejecución en Chromium es real.
+              </p>
+            </div>
+          )
         )}
 
         {!started && (

@@ -24,7 +24,8 @@ const assertApiUrl = (mode: string) => {
 };
 
 export default defineConfig(({ command, mode }) => {
-  if (command === 'build') {
+  // Con VITE_BACKEND=recorded la web reproduce una grabación y no necesita API.
+  if (command === 'build' && loadEnv(mode, ENV_DIR, 'VITE_').VITE_BACKEND !== 'recorded') {
     assertApiUrl(mode);
   }
   return {

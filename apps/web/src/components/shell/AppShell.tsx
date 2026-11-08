@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { env } from '../../config';
+import { env, isRecordedBackend } from '../../config';
 import type { ServiceStatus, ServicesState } from '../../hooks/useServiceStatus';
 import { hashForView, VIEW_LABELS, type View } from '../../views';
 
@@ -40,6 +40,7 @@ const STATUS_DOT: Record<ServiceStatus, string> = {
   up: 'bg-emerald-500',
   down: 'bg-red-500',
   unknown: 'bg-neutral-600',
+  recorded: 'bg-sky-500',
 };
 
 const STATUS_TEXT: Record<ServiceStatus, string> = {
@@ -47,6 +48,7 @@ const STATUS_TEXT: Record<ServiceStatus, string> = {
   up: 'operativo',
   down: 'caído',
   unknown: 'desconocido',
+  recorded: 'grabado',
 };
 
 const ServiceRow = ({
@@ -118,7 +120,9 @@ const Sidebar = ({ view, runCount, services, info, onNavigate }: SidebarProps) =
         <ul className="space-y-px">
           {[
             { href: REPOSITORY_URL, label: 'Repositorio' },
-            { href: `${env.VITE_API_URL}/health`, label: 'Health check de la API' },
+            ...(isRecordedBackend
+              ? []
+              : [{ href: `${env.VITE_API_URL}/health`, label: 'Health check de la API' }]),
           ].map(({ href, label }) => (
             <li key={href}>
               <a
@@ -152,6 +156,12 @@ const Sidebar = ({ view, runCount, services, info, onNavigate }: SidebarProps) =
             <dt className="text-neutral-500">Proveedor IA</dt>
             <dd className="font-mono text-2xs text-neutral-300">{info.aiProvider}</dd>
           </div>
+          {isRecordedBackend && (
+            <div className="flex justify-between gap-2">
+              <dt className="text-neutral-500">Backend</dt>
+              <dd className="font-mono text-2xs text-sky-400">grabación</dd>
+            </div>
+          )}
           <div className="flex justify-between gap-2">
             <dt className="text-neutral-500">Dominios</dt>
             <dd className="truncate font-mono text-2xs text-neutral-300">

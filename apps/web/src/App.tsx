@@ -56,7 +56,7 @@ export default function App() {
 
   // Se consulta cada vez que la API pasa a estar disponible.
   useEffect(() => {
-    if (services.api === 'up') {
+    if (services.api === 'up' || services.api === 'recorded') {
       void getAppInfo().then(setInfo);
     }
   }, [services.api]);

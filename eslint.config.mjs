@@ -34,6 +34,13 @@ export default [
     },
   },
   {
+    // Scripts de mantenimiento de la web que se ejecutan con Node (por ejemplo, record-demo.ts).
+    files: ['apps/web/scripts/**/*.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     files: ['apps/api/**/*.ts', 'apps/runner/**/*.ts', 'packages/**/*.ts', '**/*.config.{js,ts}'],
     languageOptions: {
       globals: globals.node,

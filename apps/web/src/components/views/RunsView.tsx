@@ -1,3 +1,4 @@
+import { isRecordedBackend } from '../../config';
 import { formatClock, formatDuration } from '../../format';
 import type { RunRecord, RunStatus } from '../../runs';
 import { hashForView } from '../../views';
@@ -26,7 +27,10 @@ export const RunsView = ({ runs, onOpen }: RunsViewProps) => {
         <div>
           <h1 className="text-base font-semibold text-neutral-100">Ejecuciones</h1>
           <p className="mt-0.5 text-sm text-neutral-500">
-            Historial de esta sesión. Cada fila es una ejecución real en Chromium.
+            Historial de esta sesión.{' '}
+            {isRecordedBackend
+              ? 'Cada fila reproduce una ejecución real grabada en Chromium.'
+              : 'Cada fila es una ejecución real en Chromium.'}
           </p>
         </div>
         {runs.length > 0 && (

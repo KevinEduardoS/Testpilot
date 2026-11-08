@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { isApiUp, isRunnerUp } from '../api';
+import { isRecordedBackend } from '../config';
 
-export type ServiceStatus = 'checking' | 'up' | 'down' | 'unknown';
+// recorded: la web reproduce una grabación y no hay servicios que comprobar.
+export type ServiceStatus = 'checking' | 'up' | 'down' | 'unknown' | 'recorded';
 
 export type ServicesState = {
   api: ServiceStatus;
@@ -16,13 +18,16 @@ const toStatus = (up: boolean | null): ServiceStatus =>
   up === null ? 'unknown' : up ? 'up' : 'down';
 
 export const useServiceStatus = (): ServicesState => {
-  const [state, setState] = useState<ServicesState>({
-    api: 'checking',
-    runner: 'checking',
-    apiLatencyMs: null,
-  });
+  const [state, setState] = useState<ServicesState>(
+    isRecordedBackend
+      ? { api: 'recorded', runner: 'recorded', apiLatencyMs: null }
+      : { api: 'checking', runner: 'checking', apiLatencyMs: null },
+  );
 
   useEffect(() => {
+    if (isRecordedBackend) {
+      return;
+    }
     let active = true;
 
     const check = () => {

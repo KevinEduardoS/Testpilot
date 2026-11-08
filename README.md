@@ -2,6 +2,8 @@
 
 Pruebas end-to-end a partir de lenguaje natural. TestPilot genera un script de Playwright, lo ejecuta en Chromium mostrando cada paso en vivo y, cuando falla, distingue si el error es de la prueba o un bug real del sitio.
 
+**Demo:** [testpilot-flame.vercel.app](https://testpilot-flame.vercel.app). La versión publicada no tiene servidor: reproduce ejecuciones reales grabadas en Chromium para los ejemplos, con sus tiempos, errores y capturas ([cómo se graba](docs/deploy.md#demo-sin-servidor)).
+
 ![Playground de TestPilot: una prueba reparada tras fallar por un selector](docs/assets/playground.png)
 
 **Stack:** TypeScript · React 18 · Fastify 4 · Playwright 1.49 · Zod · Claude API · Vitest · Docker

@@ -1,5 +1,34 @@
 # Despliegue público
 
+Hay dos formas de publicar TestPilot:
+
+- **[Demo sin servidor](#demo-sin-servidor):** solo la web, en Vercel, reproduciendo ejecuciones grabadas. Es la que está publicada en [testpilot-flame.vercel.app](https://testpilot-flame.vercel.app).
+- **[Despliegue completo](#despliegue-completo):** web en Vercel, y API y runner en Google Cloud Run, con ejecución en vivo y generación con Claude.
+
+## Demo sin servidor
+
+Con `VITE_BACKEND=recorded`, la web no llama a la API. Reproduce `apps/web/public/recordings/demo.json`, una grabación de respuestas reales de la API y del runner para cada ejemplo, validada con los mismos contratos Zod. Las ejecuciones se reproducen con el ritmo real de cada evento.
+
+**1. Grabar** (con la API en modo demo y el runner levantados):
+
+```bash
+npm run dev
+npm run record:demo --workspace apps/web
+```
+
+Si cambia un ejemplo o un contrato, hay que volver a grabar: un test de `apps/web` falla si la grabación no cubre todos los ejemplos.
+
+**2. Publicar** los archivos compilados, con las cabeceras de seguridad de `vercel.json`:
+
+```bash
+cd apps/web
+VITE_BACKEND=recorded npx vite build
+node -e "require('fs').writeFileSync('dist/vercel.json', JSON.stringify({ headers: require('./vercel.json').headers }))"
+npx vercel deploy dist --prod --project testpilot
+```
+
+## Despliegue completo
+
 ```
 Visitante ──► Vercel: web estática
                  │ HTTPS
